@@ -67,7 +67,7 @@ struct AddHabitBar: View {
             )
             .animation(.easeOut(duration: 0.15), value: newHabitTitle.isEmpty)
             .animation(.smooth(duration: 0.16), value: fieldFocused)
-            .onHover { isHovered = $0 }
+            .pressHover($isHovered)
 
             if showValidationError {
                 Text("Give your \(selectedType.title.lowercased()) a real name — something you'd actually say out loud.")
@@ -142,6 +142,7 @@ private struct HabitEntryTypeToggle: View {
         HStack(spacing: 2) {
             ForEach(HabitEntryType.allCases) { option in
                 Button {
+                    if selection != option { Haptics.selection() }
                     withAnimation(.easeInOut(duration: 0.15)) {
                         selection = option
                     }
@@ -190,13 +191,16 @@ private struct DueDateControl: View {
             trigger
         }
         .buttonStyle(.plain)
-        .onHover { isHovered = $0 }
+        .pressHover($isHovered)
         .help(dueAt == nil ? "Set a due date (optional)" : "Change due date")
         .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             DueDatePopover(
                 dueAt: $dueAt,
                 isPresented: $isPresented
             )
+            #if os(iOS)
+            .presentationCompactAdaptation(.popover)
+            #endif
         }
     }
 
@@ -885,7 +889,7 @@ struct HabitCard: View {
         )
         .scaleEffect(isHovered ? 1.008 : 1)
         .animation(.smooth(duration: 0.15), value: isHovered)
-        .onHover { isHovered = $0 }
+        .pressHover($isHovered)
         .modifier(MatchedStampFrame(id: habit.persistentModelID, namespace: stampNamespace))
         .contextMenu {
             if isHabitEntry {

@@ -1,0 +1,72 @@
+// Move this file into HabitTrackerWidgets/ after creating the extension target.
+// Target membership: HabitTrackerWidgets ONLY (not the main app).
+
+import ActivityKit
+import SwiftUI
+import WidgetKit
+
+@available(iOS 16.1, *)
+struct StreakLiveActivity: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: StreakActivityAttributes.self) { context in
+            // Lock Screen / Banner
+            HStack(spacing: 14) {
+                ProgressView(value: context.state.progress)
+                    .progressViewStyle(.circular)
+                    .tint(.green)
+                    .frame(width: 36, height: 36)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Today's habits")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("\(context.state.doneToday) / \(context.state.totalToday) done")
+                        .font(.headline.weight(.semibold))
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(context.state.currentStreak)")
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(.orange)
+                    Text("day streak")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(14)
+            .activityBackgroundTint(Color.black.opacity(0.2))
+            .activitySystemActionForegroundColor(.primary)
+
+        } dynamicIsland: { context in
+            DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    Label("\(context.state.doneToday)/\(context.state.totalToday)", systemImage: "checkmark.circle.fill")
+                        .font(.headline)
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    Label("\(context.state.currentStreak)", systemImage: "flame.fill")
+                        .font(.headline)
+                        .foregroundStyle(.orange)
+                }
+                DynamicIslandExpandedRegion(.center) {
+                    Text("Today's habits")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    ProgressView(value: context.state.progress)
+                        .tint(.green)
+                }
+            } compactLeading: {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            } compactTrailing: {
+                Text("\(context.state.doneToday)/\(context.state.totalToday)")
+                    .font(.caption2.weight(.semibold))
+            } minimal: {
+                Image(systemName: "flame.fill")
+                    .foregroundStyle(.orange)
+            }
+        }
+    }
+}

@@ -63,7 +63,7 @@ struct EdgePanelHandle: View {
         .buttonStyle(EdgeHandleButtonStyle(isActive: isActive))
         .accessibilityLabel(label)
         .animation(.smooth(duration: 0.14), value: isHovered)
-        .onHover { isHovered = $0 }
+        .pressHover($isHovered)
         .simultaneousGesture(
             DragGesture(minimumDistance: 12)
                 .onEnded { value in

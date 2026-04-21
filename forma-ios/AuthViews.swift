@@ -418,411 +418,420 @@ struct FloatingHabitBackground: View {
 // MARK: - Auth Gate
 
 struct AuthGateView: View {
+    enum Step: Equatable {
+        case signIn
+        case signUp
+        case verify
+    }
+
     @ObservedObject var backend: HabitBackendStore
     let iconNamespace: Namespace.ID
+    /// Called the instant the user taps a sign-in / register / send-code
+    /// button — BEFORE the network call is issued. The intro orchestrator
+    /// uses this to raise the yellow/blue cascade immediately so the grid
+    /// hides the auth card while the API round-trip is in flight.
+    var onAuthStart: (() -> Void)? = nil
+    /// Called when an auth attempt finishes unsuccessfully (validation miss
+    /// or server rejection). Lets the intro orchestrator pull the cascade
+    /// back down and return focus to the auth card with the error shown.
+    var onAuthFailed: (() -> Void)? = nil
     let onAuthenticated: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
-    @State private var mode: AuthMode = .signIn
+
+    @State private var step: Step = .signIn
     @State private var username = ""
     @State private var email = ""
     @State private var password = ""
     @State private var verificationCode = ""
-    @State private var isVerificationCodeSent = false
-    @State private var successMessage: String?
     @State private var selectedAvatarID = AvatarChoice.options[0].id
     @State private var validationMessage: String?
-    @State private var quoteIndex: Int = Int.random(in: 0..<FormaQuotes.all.count)
-
-    private let cardWidth: CGFloat = 368
+    @State private var successMessage: String?
 
     var body: some View {
         ZStack {
-            cardView
-                .frame(width: cardWidth)
-                .padding(.horizontal, 32)
-                .padding(.top, 36)
-                .padding(.bottom, 32)
-                .background {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .fill(.ultraThinMaterial)
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .fill(
-                                colorScheme == .dark
-                                    ? Color(red: 0.118, green: 0.118, blue: 0.133).opacity(0.82)
-                                    : Color.white.opacity(0.72)
-                            )
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .strokeBorder(
-                                colorScheme == .dark
-                                    ? Color.white.opacity(0.09)
-                                    : Color.white.opacity(0.9),
-                                lineWidth: 1
-                            )
+            CleanShotTheme.canvas(for: colorScheme)
+                .ignoresSafeArea()
+
+            FloatingHabitBackground()
+                .ignoresSafeArea()
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    topBar
+                        .padding(.top, 8)
+                        .padding(.bottom, 22)
+
+                    switch step {
+                    case .signIn: signInContent
+                    case .signUp: signUpContent
+                    case .verify: verifyContent
                     }
                 }
-                .shadow(
-                    color: Color.black.opacity(colorScheme == .dark ? 0.55 : 0.18),
-                    radius: 32, y: 18
-                )
+                .padding(.horizontal, 22)
+                .padding(.bottom, 40)
+                .frame(maxWidth: 460, alignment: .leading)
+                .frame(maxWidth: .infinity)
+            }
+            #if os(iOS)
+            .scrollDismissesKeyboard(.interactively)
+            #endif
+        }
+        .onChange(of: step) { _, _ in
+            validationMessage = nil
+            successMessage = nil
+            backend.errorMessage = nil
         }
     }
 
-    // MARK: Card
+    // MARK: Top bar (logo + toggle)
 
-    private var cardView: some View {
-        VStack(spacing: 0) {
-            appIcon
-                .padding(.bottom, 18)
+    @ViewBuilder
+    private var topBar: some View {
+        HStack(spacing: 10) {
+            if step == .verify {
+                Button {
+                    withAnimation(.smooth(duration: 0.24)) { step = .signUp }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 12, weight: .bold))
+                        Text("Back")
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    }
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(CleanShotTheme.controlFill(for: colorScheme))
+                    )
+                }
+                .buttonStyle(.plain)
 
-            Text(headlineTitle)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-                .kerning(-0.3)
-                .foregroundStyle(titleColor)
-                .padding(.bottom, 6)
+                Spacer()
+            } else {
+                HStack(spacing: 10) {
+                    FormaIconView(size: 34)
+                        .matchedGeometryEffect(id: "auth-app-icon", in: iconNamespace)
+                        .shadow(color: CleanShotTheme.accent.opacity(0.22), radius: 10, y: 4)
+                    Text("Forma")
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundStyle(.primary)
+                }
 
-            VStack(spacing: 3) {
-                Text("\u{201C}\(FormaQuotes.all[quoteIndex].line)\u{201D}")
-                    .font(.system(size: 12.5, weight: .medium, design: .serif))
-                    .italic()
-                    .kerning(-0.1)
-                    .foregroundStyle(subtitleColor)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(FormaQuotes.all[quoteIndex].attribution)
-                    .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(termsColor)
-                    .kerning(0.3)
-                    .textCase(.uppercase)
+                Spacer()
+
+                Button {
+                    withAnimation(.smooth(duration: 0.24)) {
+                        step = (step == .signIn) ? .signUp : .signIn
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        if step == .signUp {
+                            Image(systemName: "arrow.left")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        Text(step == .signIn ? "Sign up" : "Sign in")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        if step == .signIn {
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                    }
+                    .foregroundStyle(CleanShotTheme.accent)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(CleanShotTheme.accent.opacity(0.12))
+                    )
+                }
+                .buttonStyle(.plain)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 4)
-            .padding(.bottom, 20)
-            .contentTransition(.opacity)
-            .id(quoteIndex)
-            .onTapGesture { shuffleQuote() }
-            .help("Tap for another")
+        }
+    }
 
-            tabSwitcher
-                .padding(.bottom, 16)
+    // MARK: Sign In
+
+    private var signInContent: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Welcome back.")
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text("Sign in to continue your streak.")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(spacing: 12) {
+                AuthTextField(placeholder: "Username", text: $username, isSecure: false, colorScheme: colorScheme)
+                AuthTextField(placeholder: "Password", text: $password, isSecure: true, colorScheme: colorScheme)
+            }
+
+            messageBanner
+
+            AuthPrimaryButton(title: "Sign in", isLoading: backend.isSyncing, action: performSignIn)
+
+            HStack(spacing: 10) {
+                authDivider
+                Text("OR")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                authDivider
+            }
+
+            AuthAppleButton(title: "Continue with Apple") {
+                validationMessage = "Sign in with Apple isn’t wired to this build yet — use username + password."
+            }
 
             VStack(spacing: 10) {
-                authInput(placeholder: "Username", text: $username, isSecure: false)
-                    .onSubmit { submit() }
-
-                if mode == .signUp {
-                    authInput(placeholder: "Email", text: $email, isSecure: false)
-                        .onChange(of: email) { _, _ in
-                            isVerificationCodeSent = false
-                            verificationCode = ""
-                            successMessage = nil
-                        }
-                        .onSubmit { submit() }
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-
-                authInput(placeholder: "Password", text: $password, isSecure: true)
-                    .onSubmit { submit() }
-
-                if mode == .signUp && isVerificationCodeSent {
-                    authInput(placeholder: "6-digit verification code",
-                              text: $verificationCode, isSecure: false)
-                        .onSubmit { submit() }
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-            }
-
-            if mode == .signUp {
-                avatarGrid
-                    .padding(.top, 14)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-
-            if let message = validationMessage ?? backend.errorMessage {
-                Text(message)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(Color(red: 0.84, green: 0.30, blue: 0.30))
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 8)
-            }
-
-            if let successMessage {
-                Text(successMessage)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(Color(red: 0.28, green: 0.66, blue: 0.36))
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 8)
-            }
-
-            Button(action: submit) {
-                HStack(spacing: 8) {
-                    if backend.isSyncing {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(.white)
+                HStack(spacing: 6) {
+                    Text("New here?")
+                        .foregroundStyle(.secondary)
+                    Button {
+                        withAnimation(.smooth(duration: 0.24)) { step = .signUp }
+                    } label: {
+                        Text("Create an account")
+                            .foregroundStyle(CleanShotTheme.accent)
+                            .fontWeight(.semibold)
                     }
-                    Text(primaryActionTitle)
-                        .font(.system(size: 14, weight: .semibold))
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 42)
-            }
-            .buttonStyle(GradientPrimaryButtonStyle())
-            .disabled(backend.isSyncing)
-            .padding(.top, 14)
-
-            if mode == .signUp && isVerificationCodeSent {
-                Button("Resend code", action: resendVerificationCode)
                     .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(subtitleColor)
-                    .disabled(backend.isSyncing)
-                    .padding(.top, 10)
+                }
+                .font(.system(size: 14, weight: .medium, design: .rounded))
+
+                Text("Forgot password?")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 4)
+        }
+    }
+
+    // MARK: Sign Up
+
+    private var signUpContent: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Let’s build something lasting.")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text("One daily habit at a time.")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.secondary)
             }
 
-            Text(mode == .signIn
-                 ? "Forgot password?"
-                 : "By continuing you agree to our Terms & Privacy")
-                .font(.system(size: 11.5))
-                .foregroundStyle(termsColor)
-                .multilineTextAlignment(.center)
-                .padding(.top, 14)
-        }
-    }
+            VStack(spacing: 12) {
+                AuthTextField(placeholder: "Username", text: $username, isSecure: false, colorScheme: colorScheme)
+                AuthTextField(placeholder: "Email", text: $email, isSecure: false, colorScheme: colorScheme)
+                AuthTextField(placeholder: "Password (8+ characters)", text: $password, isSecure: true, colorScheme: colorScheme)
+            }
 
-    // MARK: Sub-components
+            VStack(alignment: .leading, spacing: 10) {
+                Text("CHOOSE AN AVATAR")
+                    .font(.system(size: 11, weight: .semibold))
+                    .kerning(1.2)
+                    .foregroundStyle(.secondary)
 
-    private var appIcon: some View {
-        FormaIconView(size: 60)
-            .matchedGeometryEffect(id: "auth-app-icon", in: iconNamespace)
-            .shadow(color: Color.formaBlue.opacity(colorScheme == .dark ? 0.45 : 0.28), radius: 18, y: 8)
-    }
-
-    private var tabSwitcher: some View {
-        HStack(spacing: 2) {
-            tabButton(title: "Sign In", active: mode == .signIn) { switchMode(.signIn) }
-            tabButton(title: "Sign Up", active: mode == .signUp) { switchMode(.signUp) }
-        }
-        .padding(3)
-        .background {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(
-                    colorScheme == .dark
-                        ? Color.white.opacity(0.05)
-                        : Color.black.opacity(0.05)
-                )
-        }
-    }
-
-    private func tabButton(title: String, active: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 13, weight: .semibold))
-                .kerning(-0.1)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .foregroundStyle(
-                    active
-                        ? (colorScheme == .dark
-                           ? Color.white.opacity(0.92)
-                           : Color.black.opacity(0.85))
-                        : (colorScheme == .dark
-                           ? Color.white.opacity(0.35)
-                           : Color.black.opacity(0.35))
-                )
-                .background {
-                    if active {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(
-                                colorScheme == .dark
-                                    ? Color.white.opacity(0.10)
-                                    : Color.white.opacity(0.85)
-                            )
-                            .shadow(color: Color.black.opacity(0.1), radius: 4, y: 1)
-                    }
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func authInput(placeholder: String, text: Binding<String>, isSecure: Bool) -> some View {
-        AuthInputField(
-            placeholder: placeholder,
-            text: text,
-            isSecure: isSecure,
-            colorScheme: colorScheme
-        )
-    }
-
-    private var avatarGrid: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Choose an avatar")
-                .font(.system(size: 11.5, weight: .semibold))
-                .foregroundStyle(subtitleColor)
-
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(54), spacing: 8), count: 5), spacing: 8) {
-                ForEach(AvatarChoice.options) { avatar in
-                    AvatarChoiceButton(
-                        avatar: avatar,
-                        isSelected: avatar.id == selectedAvatarID
-                    ) {
-                        selectedAvatarID = avatar.id
+                HStack(spacing: 10) {
+                    ForEach(AvatarChoice.options.prefix(5)) { avatar in
+                        AuthAvatarTile(
+                            avatar: avatar,
+                            isSelected: avatar.id == selectedAvatarID,
+                            colorScheme: colorScheme
+                        ) {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                selectedAvatarID = avatar.id
+                            }
+                        }
                     }
                 }
             }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
 
-    // MARK: Colours
+            messageBanner
 
-    private var titleColor: Color {
-        colorScheme == .dark ? Color.white.opacity(0.92) : Color.black.opacity(0.88)
-    }
+            AuthPrimaryButton(title: "Send verification code", isLoading: backend.isSyncing, action: requestVerificationCode)
 
-    private var subtitleColor: Color {
-        colorScheme == .dark ? Color.white.opacity(0.36) : Color.black.opacity(0.38)
-    }
-
-    private var termsColor: Color {
-        colorScheme == .dark ? Color.white.opacity(0.25) : Color.black.opacity(0.28)
-    }
-
-    // MARK: Modes + flow
-
-    private enum AuthMode {
-        case signIn
-        case signUp
-
-        var primaryActionTitle: String {
-            switch self {
-            case .signIn: return "Sign In"
-            case .signUp: return "Create Account"
+            HStack(spacing: 6) {
+                Text("Already have one?")
+                    .foregroundStyle(.secondary)
+                Button {
+                    withAnimation(.smooth(duration: 0.24)) { step = .signIn }
+                } label: {
+                    Text("Sign in")
+                        .foregroundStyle(CleanShotTheme.accent)
+                        .fontWeight(.semibold)
+                }
+                .buttonStyle(.plain)
             }
+            .font(.system(size: 14, weight: .medium, design: .rounded))
+            .frame(maxWidth: .infinity)
+            .padding(.top, 4)
         }
     }
 
-    private var headlineTitle: String {
-        switch mode {
-        case .signIn: return "Back in form."
-        case .signUp: return "Find your form."
+    // MARK: Verify email
+
+    private var verifyContent: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Verify your email.")
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                (
+                    Text("We sent a code to ")
+                        .foregroundStyle(.secondary)
+                    + Text(email.isEmpty ? "your inbox" : email)
+                        .foregroundStyle(.primary)
+                        .fontWeight(.semibold)
+                    + Text(".")
+                        .foregroundStyle(.secondary)
+                )
+                .font(.system(size: 15, weight: .medium))
+            }
+
+            AuthCodeField(code: $verificationCode, colorScheme: colorScheme)
+
+            messageBanner
+
+            AuthPrimaryButton(title: "Verify", isLoading: backend.isSyncing, action: performRegistration)
+
+            HStack(spacing: 6) {
+                Text("Didn’t get it?")
+                    .foregroundStyle(.secondary)
+                Button(action: requestVerificationCode) {
+                    Text("Resend")
+                        .foregroundStyle(CleanShotTheme.accent)
+                        .fontWeight(.semibold)
+                }
+                .buttonStyle(.plain)
+                .disabled(backend.isSyncing)
+            }
+            .font(.system(size: 14, weight: .medium, design: .rounded))
+            .frame(maxWidth: .infinity)
         }
     }
+
+    // MARK: Shared chrome
+
+    private var authDivider: some View {
+        RoundedRectangle(cornerRadius: 1)
+            .fill(CleanShotTheme.stroke(for: colorScheme))
+            .frame(height: 1)
+    }
+
+    @ViewBuilder
+    private var messageBanner: some View {
+        if let message = validationMessage ?? backend.errorMessage {
+            Text(message)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(CleanShotTheme.danger)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if let successMessage {
+            Text(successMessage)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(CleanShotTheme.success)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: Actions
 
     private var selectedAvatar: AvatarChoice {
         AvatarChoice.options.first { $0.id == selectedAvatarID } ?? AvatarChoice.options[0]
     }
 
-    private var primaryActionTitle: String {
-        if mode == .signUp && !isVerificationCodeSent {
-            return "Send verification code"
-        }
-        return mode.primaryActionTitle
-    }
-
-    private func switchMode(_ nextMode: AuthMode) {
-        withAnimation(.smooth(duration: 0.22)) {
-            mode = nextMode
-            validationMessage = nil
-            successMessage = nil
-            backend.errorMessage = nil
-            shuffleQuote(animated: false)
-        }
-    }
-
-    private func shuffleQuote(animated: Bool = true) {
-        let next: Int = {
-            guard FormaQuotes.all.count > 1 else { return 0 }
-            var candidate = Int.random(in: 0..<FormaQuotes.all.count)
-            while candidate == quoteIndex {
-                candidate = Int.random(in: 0..<FormaQuotes.all.count)
-            }
-            return candidate
-        }()
-        if animated {
-            withAnimation(.smooth(duration: 0.28)) { quoteIndex = next }
-        } else {
-            quoteIndex = next
-        }
-    }
-
-    private func submit() {
+    private func performSignIn() {
         let trimmedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedVerificationCode = verificationCode.trimmingCharacters(in: .whitespacesAndNewlines)
         validationMessage = nil
         successMessage = nil
         backend.errorMessage = nil
 
         guard isValidUsername(trimmedUsername) else {
-            validationMessage = "Use 3-30 letters, numbers, or underscores for username."
+            validationMessage = "Use 3-30 letters, numbers, or underscores for your username."
+            return
+        }
+        guard !password.isEmpty else {
+            validationMessage = "Enter your password."
             return
         }
 
-        if mode == .signUp && !trimmedEmail.contains("@") {
-            validationMessage = "Enter a valid email address."
-            return
-        }
-
-        guard mode == .signIn ? !password.isEmpty : password.count >= 8 else {
-            validationMessage = "Password must be at least 8 characters."
-            return
-        }
-
-        if mode == .signUp && isVerificationCodeSent && !isValidVerificationCode(trimmedVerificationCode) {
-            validationMessage = "Enter the 6-digit verification code from your email."
-            return
-        }
-
+        onAuthStart?()
         Task {
-            switch mode {
-            case .signIn:
-                await backend.signIn(username: trimmedUsername, password: password)
-            case .signUp:
-                if !isVerificationCodeSent {
-                    await backend.requestEmailVerification(email: trimmedEmail)
-                    if backend.errorMessage == nil {
-                        isVerificationCodeSent = true
-                        successMessage = "Check \(trimmedEmail) for your verification code."
-                    }
-                    return
-                }
-
-                await backend.register(
-                    username: trimmedUsername,
-                    email: trimmedEmail,
-                    password: password,
-                    avatarURL: selectedAvatar.url,
-                    verificationCode: trimmedVerificationCode
-                )
-            }
-
+            await backend.signIn(username: trimmedUsername, password: password)
             if backend.isAuthenticated {
                 onAuthenticated()
+            } else {
+                onAuthFailed?()
             }
         }
     }
 
-    private func resendVerificationCode() {
+    private func requestVerificationCode() {
+        let trimmedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
         validationMessage = nil
         successMessage = nil
         backend.errorMessage = nil
 
+        guard isValidUsername(trimmedUsername) else {
+            validationMessage = "Use 3-30 letters, numbers, or underscores for your username."
+            return
+        }
         guard trimmedEmail.contains("@") else {
             validationMessage = "Enter a valid email address."
+            return
+        }
+        guard password.count >= 8 else {
+            validationMessage = "Password must be at least 8 characters."
             return
         }
 
         Task {
             await backend.requestEmailVerification(email: trimmedEmail)
             if backend.errorMessage == nil {
-                verificationCode = ""
-                successMessage = "A new code was sent to \(trimmedEmail)."
+                withAnimation(.smooth(duration: 0.24)) {
+                    step = .verify
+                    successMessage = "Check \(trimmedEmail) for your verification code."
+                }
+            }
+        }
+    }
+
+    private func performRegistration() {
+        let trimmedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedCode = verificationCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        validationMessage = nil
+        successMessage = nil
+        backend.errorMessage = nil
+
+        guard isValidVerificationCode(trimmedCode) else {
+            validationMessage = "Enter the 6-digit code from your email."
+            return
+        }
+
+        onAuthStart?()
+        Task {
+            await backend.register(
+                username: trimmedUsername,
+                email: trimmedEmail,
+                password: password,
+                avatarURL: selectedAvatar.url,
+                verificationCode: trimmedCode
+            )
+            if backend.isAuthenticated {
+                onAuthenticated()
+            } else {
+                onAuthFailed?()
             }
         }
     }
@@ -837,103 +846,214 @@ struct AuthGateView: View {
     }
 }
 
-// MARK: - Input field
+// MARK: - Field
 
-private struct AuthInputField: View {
+private struct AuthTextField: View {
     let placeholder: String
     @Binding var text: String
     let isSecure: Bool
     let colorScheme: ColorScheme
-
     @FocusState private var isFocused: Bool
 
-    private var fieldShape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: 10, style: .continuous)
-    }
-
-    private var fieldFill: Color {
-        colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.04)
-    }
-
-    private var strokeColor: Color {
-        if isFocused { return CleanShotTheme.accent }
-        return colorScheme == .dark ? Color.white.opacity(0.09) : Color.black.opacity(0.09)
-    }
-
-    private var textColor: Color {
-        colorScheme == .dark ? Color.white.opacity(0.88) : Color.black.opacity(0.85)
-    }
-
     var body: some View {
-        rawField
+        field
             .textFieldStyle(.plain)
-            .font(.system(size: 14))
-            .kerning(-0.1)
-            .foregroundStyle(textColor)
-            .padding(.horizontal, 14)
-            .frame(height: 42)
-            .background(fieldFill, in: fieldShape)
-            .overlay {
-                fieldShape.strokeBorder(strokeColor, lineWidth: 1)
-            }
-            .overlay {
-                if isFocused {
-                    fieldShape
-                        .strokeBorder(CleanShotTheme.accent.opacity(0.25), lineWidth: 3)
-                        .allowsHitTesting(false)
-                }
-            }
+            .font(.system(size: 15, weight: .medium, design: .rounded))
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 18)
+            .frame(height: 48)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(CleanShotTheme.surface(for: colorScheme))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(
+                        isFocused
+                            ? CleanShotTheme.accent
+                            : CleanShotTheme.stroke(for: colorScheme),
+                        lineWidth: isFocused ? 1.6 : 1
+                    )
+            )
             .focused($isFocused)
-            .animation(.smooth(duration: 0.18), value: isFocused)
+            .animation(.smooth(duration: 0.14), value: isFocused)
     }
 
     @ViewBuilder
-    private var rawField: some View {
+    private var field: some View {
         if isSecure {
             SecureField(placeholder, text: $text)
         } else {
             TextField(placeholder, text: $text)
+                #if os(iOS)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                #endif
         }
     }
 }
 
 // MARK: - Primary button
 
-private struct GradientPrimaryButtonStyle: ButtonStyle {
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.isEnabled) private var isEnabled
+private struct AuthPrimaryButton: View {
+    let title: String
+    let isLoading: Bool
+    let action: () -> Void
 
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(.white)
-            .kerning(-0.1)
-            .background {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                CleanShotTheme.accent.opacity(0.96),
-                                CleanShotTheme.accent.opacity(0.82)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                if isLoading {
+                    ProgressView().tint(.white)
+                }
+                Text(title)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
             }
-            .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5)
-                    .allowsHitTesting(false)
-            }
-            .shadow(
-                color: CleanShotTheme.accent.opacity(isEnabled ? 0.35 : 0),
-                radius: configuration.isPressed ? 6 : 12,
-                y: configuration.isPressed ? 2 : 6
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(CleanShotTheme.accent)
             )
-            .opacity(isEnabled ? 1 : 0.45)
-            .brightness(configuration.isPressed ? -0.04 : 0)
-            .scaleEffect(configuration.isPressed ? 0.995 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .shadow(color: CleanShotTheme.accent.opacity(0.32), radius: 12, y: 6)
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoading)
+    }
+}
+
+private struct AuthAppleButton: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: "applelogo")
+                    .font(.system(size: 17, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.black.opacity(0.92))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - 6-cell code field
+
+private struct AuthCodeField: View {
+    @Binding var code: String
+    let colorScheme: ColorScheme
+
+    @FocusState private var isFocused: Bool
+    private let cellCount = 6
+
+    var body: some View {
+        ZStack {
+            // Invisible backing TextField that actually captures input (incl. paste).
+            TextField("", text: boundProxy)
+                .focused($isFocused)
+                #if os(iOS)
+                .keyboardType(.numberPad)
+                .textContentType(.oneTimeCode)
+                .textInputAutocapitalization(.never)
+                #endif
+                .autocorrectionDisabled(true)
+                .opacity(0.001)
+                .frame(height: 52)
+                .accessibilityLabel("Verification code")
+
+            HStack(spacing: 10) {
+                ForEach(0..<cellCount, id: \.self) { index in
+                    cell(at: index)
+                }
+            }
+            .allowsHitTesting(false)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { isFocused = true }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { isFocused = true }
+        }
+    }
+
+    private var boundProxy: Binding<String> {
+        Binding(
+            get: { code },
+            set: { newValue in
+                let digitsOnly = newValue.filter(\.isNumber)
+                code = String(digitsOnly.prefix(cellCount))
+            }
+        )
+    }
+
+    private func cell(at index: Int) -> some View {
+        let chars = Array(code)
+        let filled = index < chars.count
+        let isCurrent = index == chars.count && isFocused
+        return Text(filled ? String(chars[index]) : " ")
+            .font(.system(size: 22, weight: .bold, design: .rounded))
+            .foregroundStyle(.primary)
+            .frame(width: 44, height: 54)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(CleanShotTheme.surface(for: colorScheme))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(
+                        isCurrent || filled
+                            ? CleanShotTheme.accent
+                            : CleanShotTheme.stroke(for: colorScheme),
+                        lineWidth: (isCurrent || filled) ? 1.8 : 1
+                    )
+            )
+    }
+}
+
+// MARK: - Avatar tile
+
+private struct AuthAvatarTile: View {
+    let avatar: AvatarChoice
+    let isSelected: Bool
+    let colorScheme: ColorScheme
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            AsyncImage(url: URL(string: avatar.url)) { image in
+                image.resizable().scaledToFit()
+            } placeholder: {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(CleanShotTheme.accent.opacity(0.6))
+            }
+            .frame(width: 48, height: 48)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .padding(4)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(CleanShotTheme.surface(for: colorScheme))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(
+                        isSelected
+                            ? CleanShotTheme.accent
+                            : CleanShotTheme.stroke(for: colorScheme),
+                        lineWidth: isSelected ? 2 : 1
+                    )
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -1026,54 +1146,20 @@ enum FormaQuotes {
     ]
 }
 
-// MARK: - Connection status pill (unchanged)
+// MARK: - Connection status icon
 
-struct ConnectionStatusPill: View {
+/// Minimal online/offline indicator. Blue cloud when connected, struck-through
+/// grey cloud when the device has no route to the backend. The sync itself is
+/// automatic (flushOutbox fires on reconnect) so there's no manual button.
+struct ConnectionStatusIcon: View {
     @ObservedObject var backend: HabitBackendStore
-    let onSync: () -> Void
-
-    @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: backend.isAuthenticated ? "server.rack" : "wifi.slash")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(backend.errorMessage == nil ? CleanShotTheme.success : CleanShotTheme.warning)
-
-            Text(statusText)
-                .font(.caption.weight(.semibold))
-                .lineLimit(1)
-
-            if backend.isSyncing {
-                ProgressView()
-                    .controlSize(.small)
-                    .scaleEffect(0.72)
-            } else if backend.isAuthenticated {
-                Button(action: onSync) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 10, weight: .bold))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.horizontal, 12)
-        .frame(height: 30)
-        .cleanShotSurface(shape: Capsule(), level: .control, isActive: isHovered)
-        .onHover { isHovered = $0 }
-    }
-
-    private var statusText: String {
-        if let errorMessage = backend.errorMessage {
-            return errorMessage
-        }
-
-        if backend.isSyncing {
-            return "Syncing..."
-        }
-
-        return backend.isAuthenticated
-            ? (backend.statusMessage ?? "Connected to \(BackendEnvironment.displayHost)")
-            : "Backend sign in required"
+        Image(systemName: backend.isOnline ? "icloud.fill" : "icloud.slash")
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(backend.isOnline ? Color.formaBlue : Color.secondary)
+            .opacity(backend.isOnline ? 1 : 0.6)
+            .accessibilityLabel(backend.isOnline ? "Online" : "Offline")
+            .animation(.easeInOut(duration: 0.2), value: backend.isOnline)
     }
 }

@@ -1,6 +1,30 @@
 import SwiftUI
 
+/// Elevated glass panel wrapper that only draws on macOS/iPad edge-handle layouts.
+/// On compact iPhone the surface is omitted so content scrolls full-bleed.
+struct OptionalPanelSurface: ViewModifier {
+    let isEnabled: Bool
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.cleanShotSurface(
+                shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
+                level: .elevated,
+                shadowRadius: 18
+            )
+        } else {
+            content
+        }
+    }
+}
+
 struct SettingsPanel: View {
+    enum Mode {
+        case combined  // macOS / iPad: account + social together in one panel
+        case friends   // iPhone "Friends" tab: mentor, social summary, feed, suggestions
+        case account   // iPhone "Account" tab: account actions, time reminders
+    }
+
+    var mode: Mode = .combined
     let metrics: HabitMetrics
     @ObservedObject var backend: HabitBackendStore
     let habits: [Habit]
@@ -8,63 +32,73 @@ struct SettingsPanel: View {
     let onFindMentor: () -> Void
     let onReminderChange: (Habit, HabitReminderWindow?) -> Void
 
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
     @State private var showDeleteConfirm = false
+
+    private var isCompact: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .compact
+        #else
+        false
+        #endif
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 10) {
-                    Image(systemName: "person.2")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(CleanShotTheme.accent)
-                        .frame(width: 30, height: 30)
-                        .cleanShotSurface(shape: RoundedRectangle(cornerRadius: 8, style: .continuous), level: .control)
+                header
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Social Circle")
-                            .font(.headline)
-                        Text("Following, consistency, small wins")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
+                if mode == .combined {
+                    AccountActionsCard(backend: backend, showDeleteConfirm: $showDeleteConfirm)
                 }
 
-                AccountActionsCard(backend: backend, onSync: onSync, showDeleteConfirm: $showDeleteConfirm)
+                if mode == .friends, let dashboard = backend.dashboard {
+                    FriendsLeaderboardCard(dashboard: dashboard)
+                }
 
-                MentorActionCard(metrics: metrics, dashboard: backend.dashboard, onFindMentor: onFindMentor)
+                if mode == .friends || mode == .combined {
+                    MentorActionCard(metrics: metrics, dashboard: backend.dashboard, onFindMentor: onFindMentor)
 
-                SocialSummaryCard(metrics: metrics, dashboard: backend.dashboard)
+                    SocialSummaryCard(metrics: metrics, dashboard: backend.dashboard)
 
-                SocialFeedCard(dashboard: backend.dashboard)
+                    SocialFeedCard(dashboard: backend.dashboard)
 
-                FriendSuggestionsCard(
-                    dashboard: backend.dashboard,
-                    searchResults: backend.friendSearchResults,
-                    isSearching: backend.friendSearchRequestState.isLoading,
-                    onSearch: { query in
-                        await backend.searchFriends(query: query)
-                    }
-                ) { userID in
-                    Task {
-                        await backend.requestFriend(userID: userID)
+                    FriendSuggestionsCard(
+                        dashboard: backend.dashboard,
+                        searchResults: backend.friendSearchResults,
+                        isSearching: backend.friendSearchRequestState.isLoading,
+                        onSearch: { query in
+                            await backend.searchFriends(query: query)
+                        }
+                    ) { userID in
+                        Task {
+                            await backend.requestFriend(userID: userID)
+                        }
                     }
                 }
 
-                TimeRemindersCard(
-                    habits: habits,
-                    onReminderChange: onReminderChange
-                )
+                if mode == .combined {
+                    TimeRemindersCard(
+                        habits: habits,
+                        onReminderChange: onReminderChange
+                    )
+                }
+
+                if mode == .account {
+                    TimeRemindersCard(
+                        habits: habits,
+                        onReminderChange: onReminderChange
+                    )
+
+                    AccountActionsCard(backend: backend, showDeleteConfirm: $showDeleteConfirm)
+                }
             }
             .padding(16)
         }
         .scrollIndicators(.hidden)
-        .cleanShotSurface(
-            shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
-            level: .elevated,
-            shadowRadius: 18
-        )
+        .modifier(OptionalPanelSurface(isEnabled: !isCompact))
         .confirmationDialog(
             "Delete account?",
             isPresented: $showDeleteConfirm,
@@ -78,11 +112,55 @@ struct SettingsPanel: View {
             Text("This permanently deletes your account, all habits, and streak history. This cannot be undone.")
         }
     }
+
+    @ViewBuilder
+    private var header: some View {
+        HStack(spacing: 10) {
+            Image(systemName: headerIcon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(CleanShotTheme.accent)
+                .frame(width: 30, height: 30)
+                .cleanShotSurface(shape: RoundedRectangle(cornerRadius: 8, style: .continuous), level: .control)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(headerTitle)
+                    .font(.headline)
+                Text(headerSubtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+    }
+
+    private var headerIcon: String {
+        switch mode {
+        case .combined: return "person.2"
+        case .friends: return "person.2.fill"
+        case .account: return "person.crop.circle"
+        }
+    }
+
+    private var headerTitle: String {
+        switch mode {
+        case .combined: return "Social Circle"
+        case .friends: return "Friends"
+        case .account: return "Account"
+        }
+    }
+
+    private var headerSubtitle: String {
+        switch mode {
+        case .combined: return "Following, consistency, small wins"
+        case .friends: return "Leaderboard, mentor, follows"
+        case .account: return "Reminders and sign out"
+        }
+    }
 }
 
 struct AccountActionsCard: View {
     @ObservedObject var backend: HabitBackendStore
-    let onSync: () -> Void
     @Binding var showDeleteConfirm: Bool
 
     var body: some View {
@@ -100,10 +178,11 @@ struct AccountActionsCard: View {
                     .foregroundStyle(.secondary)
             }
 
-            HStack(spacing: 8) {
-                SoftActionButton(title: "Sync", systemImage: "arrow.clockwise", action: onSync)
-                SoftActionButton(title: "Sign out", systemImage: "rectangle.portrait.and.arrow.right", action: backend.signOut)
-            }
+            SoftActionButton(
+                title: "Sign out",
+                systemImage: "rectangle.portrait.and.arrow.right",
+                action: backend.signOut
+            )
 
             Button {
                 showDeleteConfirm = true
@@ -126,6 +205,160 @@ struct AccountActionsCard: View {
             shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
             level: .control
         )
+    }
+}
+
+/// Full-width leaderboard card for the iPhone Friends tab. Same content as the
+/// compact `FriendsLeaderboardPill` dropdown but without the pill-chrome since
+/// it lives inside a scrolling tab rather than a floating top-bar pill.
+struct FriendsLeaderboardCard: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let dashboard: AccountabilityDashboard
+
+    private struct LeaderEntry: Identifiable {
+        let id: Int64
+        let displayName: String
+        let consistency: Int
+        let isCurrentUser: Bool
+    }
+
+    private var entries: [LeaderEntry] {
+        var result: [LeaderEntry] = [
+            LeaderEntry(
+                id: -1,
+                displayName: dashboard.profile.displayName,
+                consistency: dashboard.level.weeklyConsistencyPercent,
+                isCurrentUser: true
+            )
+        ]
+        let friends = (dashboard.social?.updates ?? []).map {
+            LeaderEntry(
+                id: $0.userId,
+                displayName: $0.displayName,
+                consistency: $0.weeklyConsistencyPercent,
+                isCurrentUser: false
+            )
+        }
+        result.append(contentsOf: friends)
+        return result.sorted { $0.consistency > $1.consistency }
+    }
+
+    private var hasFriends: Bool { !(dashboard.social?.updates ?? []).isEmpty }
+
+    private var currentUserRank: Int {
+        (entries.firstIndex { $0.isCurrentUser } ?? 0) + 1
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Label {
+                    Text("Leaderboard")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                } icon: {
+                    Image(systemName: "trophy.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(CleanShotTheme.gold)
+                }
+                Spacer()
+                if hasFriends {
+                    Text("You #\(currentUserRank)")
+                        .font(.caption2.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(CleanShotTheme.accent)
+                }
+            }
+
+            if entries.count <= 1 {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.badge.plus")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text("Add friends to compare consistency")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 4) {
+                        ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                            leaderRow(rank: index + 1, entry: entry)
+                        }
+                    }
+                }
+                .frame(maxHeight: 260)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cleanShotSurface(
+            shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
+            level: .control
+        )
+    }
+
+    private func leaderRow(rank: Int, entry: LeaderEntry) -> some View {
+        HStack(spacing: 10) {
+            Text("\(rank)")
+                .font(.system(size: 11, weight: .bold).monospacedDigit())
+                .foregroundStyle(rankColor(rank))
+                .frame(width: 18)
+
+            if rank <= 3 {
+                Image(systemName: rankMedal(rank))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(rankColor(rank))
+                    .frame(width: 16)
+            } else {
+                Color.clear.frame(width: 16)
+            }
+
+            Text(entry.isCurrentUser ? "You" : entry.displayName)
+                .font(.system(size: 13, weight: entry.isCurrentUser ? .semibold : .medium))
+                .foregroundStyle(entry.isCurrentUser ? CleanShotTheme.accent : .primary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.secondary.opacity(0.14))
+                    .frame(width: 56, height: 4)
+                Capsule()
+                    .fill(entry.isCurrentUser ? CleanShotTheme.accent : CleanShotTheme.success)
+                    .frame(width: 56 * CGFloat(entry.consistency) / 100.0, height: 4)
+            }
+
+            Text("\(entry.consistency)%")
+                .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 34, alignment: .trailing)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            entry.isCurrentUser
+                ? CleanShotTheme.accent.opacity(colorScheme == .dark ? 0.08 : 0.05)
+                : Color.clear,
+            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+        )
+    }
+
+    private func rankColor(_ rank: Int) -> Color {
+        switch rank {
+        case 1: return CleanShotTheme.gold
+        case 2: return Color.gray.opacity(0.85)
+        case 3: return CleanShotTheme.warning.opacity(0.8)
+        default: return .secondary
+        }
+    }
+
+    private func rankMedal(_ rank: Int) -> String {
+        switch rank {
+        case 1: return "medal.fill"
+        case 2: return "medal"
+        case 3: return "medal"
+        default: return "circle.fill"
+        }
     }
 }
 
@@ -563,7 +796,7 @@ struct SoftActionButton: View {
             level: .control,
             isActive: isHovered
         )
-        .onHover { isHovered = $0 }
+        .pressHover($isHovered)
     }
 }
 
@@ -625,8 +858,21 @@ struct TimeRemindersCard: View {
     let habits: [Habit]
     let onReminderChange: (Habit, HabitReminderWindow?) -> Void
 
+    @State private var isExpanded = false
+
+    private static let collapsedLimit = 3
+
     private var reminderCount: Int {
         habits.filter { $0.reminderWindow != nil }.count
+    }
+
+    private var hasMoreThanLimit: Bool {
+        habits.count > Self.collapsedLimit
+    }
+
+    private var visibleHabits: [Habit] {
+        guard hasMoreThanLimit, !isExpanded else { return habits }
+        return Array(habits.prefix(Self.collapsedLimit))
     }
 
     var body: some View {
@@ -658,12 +904,38 @@ struct TimeRemindersCard: View {
                 Divider()
 
                 VStack(spacing: 10) {
-                    ForEach(habits) { habit in
+                    ForEach(visibleHabits) { habit in
                         HabitTimeReminderRow(
                             habit: habit,
                             onReminderChange: onReminderChange
                         )
                     }
+                }
+
+                if hasMoreThanLimit {
+                    Button {
+                        withAnimation(.smooth(duration: 0.22)) {
+                            isExpanded.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(isExpanded
+                                 ? "Show fewer"
+                                 : "Show \(habits.count - Self.collapsedLimit) more")
+                                .font(.caption.weight(.semibold))
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 10, weight: .bold))
+                                .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                        }
+                        .foregroundStyle(CleanShotTheme.accent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.plain)
+                    .cleanShotSurface(
+                        shape: RoundedRectangle(cornerRadius: 10, style: .continuous),
+                        level: .control
+                    )
                 }
             }
         }
@@ -756,6 +1028,6 @@ private struct TimeReminderOptionButton: View {
             level: .control,
             isActive: isSelected || isHovered
         )
-        .onHover { isHovered = $0 }
+        .pressHover($isHovered)
     }
 }

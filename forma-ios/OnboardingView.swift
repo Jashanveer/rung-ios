@@ -24,20 +24,23 @@ struct OnboardingView: View {
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 0) {
-                    Spacer(minLength: 80)
+                    Spacer(minLength: 40)
 
-                    VStack(spacing: 48) {
+                    VStack(spacing: 40) {
                         quoteSection
                         bodySection
                         inputSection
                     }
                     .frame(maxWidth: 560)
-                    .padding(.horizontal, 48)
+                    .padding(.horizontal, compactHorizontalPadding)
 
-                    Spacer(minLength: 80)
+                    Spacer(minLength: 40)
                 }
                 .frame(maxWidth: .infinity, minHeight: 600)
             }
+            #if os(iOS)
+            .scrollDismissesKeyboard(.interactively)
+            #endif
 
             if isExiting {
                 FormaTransition(
@@ -48,6 +51,14 @@ struct OnboardingView: View {
             }
         }
         .onAppear { startSequence() }
+    }
+
+    private var compactHorizontalPadding: CGFloat {
+        #if os(iOS)
+        24
+        #else
+        48
+        #endif
     }
 
     private func beginExit() {
@@ -224,4 +235,8 @@ struct OnboardingView: View {
         }
         habitInput = ""
     }
+}
+
+#Preview("Onboarding") {
+    OnboardingView(onComplete: { _ in })
 }

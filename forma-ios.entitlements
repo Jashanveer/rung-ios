@@ -6,9 +6,5 @@
     <array>
         <string>group.jashanveer.habit-tracker-macos</string>
     </array>
-    <!-- APNs: uncomment once push capability is enabled on the provisioning profile.
-    <key>aps-environment</key>
-    <string>development</string>
-    -->
 </dict>
 </plist>

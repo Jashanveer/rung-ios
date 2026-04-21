@@ -18,6 +18,14 @@ struct FormaIntroView: View {
     @State private var iconSize: CGFloat = 110
     @State private var titleVisible = false
     @State private var didStart = false
+    /// Flips true to tell the cascading `FormaTransition` to fade out.
+    /// The cascade fills the screen the moment a login/register button is
+    /// tapped and stays covering until this signal arrives.
+    @State private var cascadeDismissSignal = false
+    /// True when the cascade is covering the screen at the direct request of a
+    /// sign-in/register tap (the screen is covering *while* the API call
+    /// runs). Drives whether we drop back to auth on failure.
+    @State private var cascadeAwaitingAuth = false
     @Namespace private var loginNamespace
 
     private enum Phase {
@@ -46,9 +54,18 @@ struct FormaIntroView: View {
             await runIntro()
         }
         .onChange(of: backend.isAuthenticated) { _, isAuth in
-            if isAuth, phase == .auth {
-                Task { await beginCascade() }
-            } else if !isAuth, phase == .done {
+            if isAuth {
+                // Auth finished (via tap-driven cascade or any other path).
+                // If we're already cascading, drop the hold so the grid fades
+                // and the dashboard is revealed.
+                if phase == .cascade {
+                    cascadeDismissSignal = true
+                } else if phase == .auth {
+                    // Safety net — an outside path authenticated us while the
+                    // auth card was still showing. Fire a cascade anyway.
+                    raiseCascade(awaitingAuth: false)
+                }
+            } else if phase == .done {
                 resetToAuth()
             }
         }
@@ -58,8 +75,22 @@ struct FormaIntroView: View {
         buildStep = 5
         titleVisible = true
         iconSize = 64
+        cascadeAwaitingAuth = false
+        cascadeDismissSignal = false
         withAnimation(.smooth(duration: 0.3)) {
             phase = .auth
+        }
+    }
+
+    /// Raise the yellow/blue cascade. Call with `awaitingAuth: true` when the
+    /// cover must stay up while an API call runs (sign-in / register taps).
+    /// Call with `awaitingAuth: false` when we just need a short transition
+    /// (e.g. returning user at launch — already authenticated).
+    private func raiseCascade(awaitingAuth: Bool) {
+        cascadeAwaitingAuth = awaitingAuth
+        cascadeDismissSignal = false
+        withAnimation(.smooth(duration: 0.12)) {
+            phase = .cascade
         }
     }
 
@@ -79,6 +110,8 @@ struct FormaIntroView: View {
                 AuthGateView(
                     backend: backend,
                     iconNamespace: loginNamespace,
+                    onAuthStart: { raiseCascade(awaitingAuth: true) },
+                    onAuthFailed: { cascadeDismissSignal = true },
                     onAuthenticated: {}
                 )
                 .transition(.opacity)
@@ -108,12 +141,36 @@ struct FormaIntroView: View {
             }
 
             if phase == .cascade {
-                FormaTransition {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        phase = .done
+                FormaTransition(
+                    awaitDismiss: true,
+                    dismiss: cascadeDismissSignal,
+                    onCovered: {
+                        // If this cascade isn't tied to an in-flight API call
+                        // (e.g., returning user whose session was restored at
+                        // launch), auto-fade as soon as the grid has covered.
+                        guard !cascadeAwaitingAuth else { return }
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 240_000_000)
+                            cascadeDismissSignal = true
+                        }
+                    },
+                    onComplete: {
+                        if backend.isAuthenticated {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                phase = .done
+                            }
+                            onReady()
+                        } else {
+                            // Auth was rejected — drop back to the auth card
+                            // with whatever error the backend surfaced.
+                            withAnimation(.smooth(duration: 0.3)) {
+                                phase = .auth
+                            }
+                            cascadeAwaitingAuth = false
+                            cascadeDismissSignal = false
+                        }
                     }
-                    onReady()
-                }
+                )
                 .transition(.opacity)
             }
         }
@@ -163,7 +220,7 @@ struct FormaIntroView: View {
             titleVisible = true
             iconSize = 64
             if backend.isAuthenticated {
-                await beginCascade()
+                raiseCascade(awaitingAuth: false)
             } else {
                 withAnimation(.smooth(duration: 0.3)) {
                     phase = .auth
@@ -188,7 +245,7 @@ struct FormaIntroView: View {
 
         if backend.isAuthenticated {
             // Already signed in — cascade directly into dashboard (or onboarding).
-            await beginCascade()
+            raiseCascade(awaitingAuth: false)
             return
         }
 
@@ -197,13 +254,6 @@ struct FormaIntroView: View {
         withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
             iconSize = 64
             phase = .auth
-        }
-    }
-
-    @MainActor
-    private func beginCascade() async {
-        withAnimation(.smooth(duration: 0.3)) {
-            phase = .cascade
         }
     }
 }

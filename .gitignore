@@ -28,3 +28,6 @@ Carthage/Build/
 ## Misc
 *.hmap
 *.xcarchive
+
+## Claude Code / agent tooling runtime state
+.claude/

@@ -2,6 +2,8 @@ import SwiftData
 import SwiftUI
 
 struct ContentViewScaffold: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     let colorScheme: ColorScheme
     let habits: [Habit]
     let todayKey: String
@@ -34,6 +36,51 @@ struct ContentViewScaffold: View {
     let onCompleteOnboarding: ([String]) -> Void
 
     var body: some View {
+        #if os(iOS)
+        if horizontalSizeClass == .compact {
+            phoneScaffold
+        } else {
+            padOrMacScaffold
+        }
+        #else
+        padOrMacScaffold
+        #endif
+    }
+
+    // MARK: - iPhone (compact) — TabView wireframe
+
+    @ViewBuilder
+    private var phoneScaffold: some View {
+        PhoneTabScaffold(
+            colorScheme: colorScheme,
+            habits: habits,
+            todayKey: todayKey,
+            newHabitTitle: $newHabitTitle,
+            newEntryType: $newEntryType,
+            metrics: metrics,
+            backend: backend,
+            showCelebration: showCelebration,
+            mentorNudge: $mentorNudge,
+            showMentorCharacter: showMentorCharacter,
+            showMenteeCharacter: showMenteeCharacter,
+            mentorMissedCount: mentorMissedCount,
+            showOnboarding: showOnboarding,
+            stampNamespace: stampNamespace,
+            stampStagingIds: stampStagingIds,
+            onAddHabit: onAddHabit,
+            onToggleHabit: onToggleHabit,
+            onDeleteHabit: onDeleteHabit,
+            onSync: onSync,
+            onFindMentor: onFindMentor,
+            onReminderChange: onReminderChange,
+            onCompleteOnboarding: onCompleteOnboarding
+        )
+    }
+
+    // MARK: - iPad & macOS — preserved edge-handle layout
+
+    @ViewBuilder
+    private var padOrMacScaffold: some View {
         ZStack {
             MinimalBackground()
                 .zIndex(-1)
@@ -211,9 +258,9 @@ struct ContentViewScaffold: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-            ConnectionStatusPill(backend: backend, onSync: onSync)
-                .padding(.top, 12)
-                .padding(.trailing, 16)
+            ConnectionStatusIcon(backend: backend)
+                .padding(.top, 16)
+                .padding(.trailing, 20)
         }
         .overlay {
             if showOnboarding {

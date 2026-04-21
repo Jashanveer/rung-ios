@@ -2,6 +2,9 @@ import SwiftUI
 
 struct StatsSidebar: View {
     @Environment(\.colorScheme) private var colorScheme
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
 
     let metrics: HabitMetrics
     let dashboard: AccountabilityDashboard?
@@ -11,6 +14,14 @@ struct StatsSidebar: View {
     private var level: Int { (dashboard?.rewards.xp ?? metrics.totalChecks) / 100 + 1 }
     private var xp: Int { (dashboard?.rewards.xp ?? metrics.totalChecks) % 100 }
     private var percent: Int { Int((metrics.progressToday * 100).rounded()) }
+
+    private var isCompact: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .compact
+        #else
+        false
+        #endif
+    }
 
     var body: some View {
         ScrollView {
@@ -147,7 +158,18 @@ struct StatsSidebar: View {
             .padding(16)
         }
         .scrollIndicators(.hidden)
-        .sidebarSurfaceStyle()
+        .modifier(OptionalSidebarSurface(isEnabled: !isCompact))
+    }
+}
+
+private struct OptionalSidebarSurface: ViewModifier {
+    let isEnabled: Bool
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.sidebarSurfaceStyle()
+        } else {
+            content
+        }
     }
 }
 
@@ -452,7 +474,7 @@ struct StatCard: View {
         )
         .scaleEffect(isHovered ? 1.015 : 1.0)
         .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isHovered)
-        .onHover { isHovered = $0 }
+        .pressHover($isHovered)
     }
 }
 

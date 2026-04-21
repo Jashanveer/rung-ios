@@ -9,7 +9,10 @@ struct ContentView: View {
     @StateObject private var backend = HabitBackendStore()
     @StateObject private var timeReminderManager = TimeReminderManager()
 
-    @State private var hasCompletedOnboarding = false
+    // Default `true` so returning sign-ins skip the onboarding overview.
+    // Flipped to `false` only when `backend.justRegistered` fires from a fresh
+    // account creation.
+    @State private var hasCompletedOnboarding = true
     @State private var newHabitTitle = ""
     @State private var newEntryType: HabitEntryType = .task
     @State private var progressOpen = false
@@ -24,10 +27,6 @@ struct ContentView: View {
     @Namespace private var stampNamespace
 
     private var showOnboarding: Bool { backend.isAuthenticated && !hasCompletedOnboarding }
-
-    private var onboardingKey: String {
-        "onboarded_\(backend.currentUserId ?? "anon")"
-    }
 
     private static let nudgeMessages = [
         "Well done! 💪", "Keep it up!", "That's the way!", "Proud of you!",
@@ -79,23 +78,23 @@ struct ContentView: View {
             onCompleteOnboarding: completeOnboarding
         )
         .onChange(of: backend.isAuthenticated) { _, isAuth in
-            hasCompletedOnboarding = isAuth
-                ? UserDefaults.standard.bool(forKey: onboardingKey)
-                : false
+            // Returning sign-ins always skip onboarding. A fresh registration
+            // flips `justRegistered` (handled below) which re-opens it once.
+            if !isAuth { hasCompletedOnboarding = true }
+        }
+        .onChange(of: backend.isOnline) { wasOnline, isOnline in
+            // Connectivity restored — flush any offline edits to the server.
+            // flushOutbox inside syncWithBackend replays pending creates,
+            // metadata updates, and check toggles captured via pendingCheckDayKey.
+            guard !wasOnline, isOnline, backend.isAuthenticated else { return }
+            syncWithBackend()
         }
         .onChange(of: backend.justRegistered) { _, isNew in
             guard isNew else { return }
-            // Fresh registration — force the James Clear overview to appear once,
-            // overriding any stale onboarded_<userId> UserDefaults key left from
-            // a prior dev database reset or a re-registered deleted account.
-            UserDefaults.standard.removeObject(forKey: onboardingKey)
             hasCompletedOnboarding = false
             backend.justRegistered = false
         }
         .onAppear {
-            if backend.isAuthenticated {
-                hasCompletedOnboarding = UserDefaults.standard.bool(forKey: onboardingKey)
-            }
             refreshTimeReminders()
         }
         .onReceive(Timer.publish(every: 300, on: .main, in: .common).autoconnect()) { _ in
@@ -154,7 +153,6 @@ struct ContentView: View {
                 localHabit.reminderWindow = remoteHabit.reminderWindow
                 localHabit.syncStatus = .synced
                 localHabit.updatedAt  = Date()
-                backend.statusMessage = "\(entryType.title) synced"
                 backend.errorMessage  = nil
                 saveAndRefreshWidgets()
                 await backend.refreshDashboard()
@@ -183,7 +181,6 @@ struct ContentView: View {
                 applyReconcile(SyncEngine.reconcile(local: habits, remote: remote))
                 handleOverdueTasks()
                 saveAndRefreshWidgets()
-                backend.statusMessage = "Synced with \(BackendEnvironment.displayHost)"
                 backend.errorMessage  = nil
                 await backend.refreshDashboard()
                 refreshTimeReminders()
@@ -375,6 +372,7 @@ struct ContentView: View {
                 habit.pendingCheckIsDone = wasUnchecked
             }
         }
+        Haptics.impact(wasUnchecked ? .medium : .light)
         saveAndRefreshWidgets()
 
         if wasUnchecked {
@@ -549,7 +547,6 @@ struct ContentView: View {
             let habit = Habit(title: trimmed, entryType: .habit, syncStatus: .pending)
             modelContext.insert(habit)
         }
-        UserDefaults.standard.set(true, forKey: onboardingKey)
         withAnimation(.easeOut(duration: 0.3)) {
             hasCompletedOnboarding = true
         }
@@ -561,6 +558,7 @@ struct ContentView: View {
     // MARK: - Helpers
 
     private func triggerCelebration() {
+        Haptics.notify(.success)
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { showCelebration = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
             withAnimation(.easeOut(duration: 0.5)) { showCelebration = false }
@@ -585,17 +583,23 @@ struct ContentView: View {
             backend.errorMessage = error.localizedDescription
         }
         WidgetSnapshotWriter.shared.refresh()
+        refreshLiveActivity()
     }
-}
 
-#Preview("Light") {
-    ContentView()
-        .modelContainer(for: Habit.self, inMemory: true)
-        .preferredColorScheme(.light)
-}
-
-#Preview("Dark") {
-    ContentView()
-        .modelContainer(for: Habit.self, inMemory: true)
-        .preferredColorScheme(.dark)
+    private func refreshLiveActivity() {
+        #if os(iOS)
+        let liveMetrics = HabitMetrics.compute(for: habits, todayKey: todayKey)
+        if liveMetrics.totalHabits > 0 && liveMetrics.doneToday < liveMetrics.totalHabits {
+            StreakActivityController.start(
+                userName: backend.dashboard?.profile.displayName ?? "",
+                doneToday: liveMetrics.doneToday,
+                totalToday: liveMetrics.totalHabits,
+                currentStreak: liveMetrics.currentPerfectStreak,
+                todayKey: todayKey
+            )
+        } else {
+            StreakActivityController.end()
+        }
+        #endif
+    }
 }

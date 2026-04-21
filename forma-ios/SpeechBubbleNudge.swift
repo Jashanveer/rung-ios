@@ -64,3 +64,8 @@ struct Triangle: Shape {
         return path
     }
 }
+
+#Preview("Nudge") {
+    SpeechBubbleNudge(text: "Nice work!", width: 160, tailAnchorX: 0.5)
+        .padding(40)
+}

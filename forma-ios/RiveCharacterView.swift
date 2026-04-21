@@ -17,7 +17,7 @@ struct MentorCharacterView: View {
     @State private var nudgeShown = false
     @State private var nudgeDismissTask: Task<Void, Never>? = nil
 
-    private let characterHeight: CGFloat = 130
+    private let baseCharacterHeight: CGFloat = 130
     private let videoAspect: CGFloat = 1080 / 1920
 
     private var mentorName: String {
@@ -28,13 +28,20 @@ struct MentorCharacterView: View {
         backend.messages(matchID: backend.dashboard?.match?.id)
     }
 
-    private let bubbleHeight: CGFloat = 300
-    private let bubbleWidth: CGFloat = 280
+    private let baseBubbleHeight: CGFloat = 300
+    private let baseBubbleWidth: CGFloat = 280
     private let bubbleGap: CGFloat = 8
-    private let nudgeBubbleWidth: CGFloat = 180
+    private let baseNudgeBubbleWidth: CGFloat = 180
 
     var body: some View {
         GeometryReader { geo in
+            // iPhone (~390pt) shrinks character + bubble; iPad/Mac keeps original sizes.
+            let narrow = geo.size.width < 500
+            let characterHeight: CGFloat = narrow ? 108 : baseCharacterHeight
+            let bubbleWidth: CGFloat = min(baseBubbleWidth, geo.size.width - 24)
+            let bubbleHeight: CGFloat = narrow ? 260 : baseBubbleHeight
+            let nudgeBubbleWidth: CGFloat = min(baseNudgeBubbleWidth, geo.size.width - 40)
+
             let charWidth = characterHeight * videoAspect
             let travelDistance = max(geo.size.width - charWidth, 0)
             let charX = walker.positionProgress * travelDistance
@@ -148,7 +155,7 @@ struct MentorCharacterView: View {
                     }
                 }
         }
-        .frame(height: chatOpen ? characterHeight + bubbleHeight + bubbleGap : characterHeight)
+        .frame(height: chatOpen ? baseCharacterHeight + baseBubbleHeight + bubbleGap : baseCharacterHeight)
         .animation(.spring(response: 0.35, dampingFraction: 0.82), value: chatOpen)
     }
 
@@ -231,19 +238,24 @@ struct MenteeCharacterView: View {
     @State private var chatAnimationTask: Task<Void, Never>? = nil
     @State private var hasAttention = false
 
-    private let characterHeight: CGFloat = 130
+    private let baseCharacterHeight: CGFloat = 130
     private let videoAspect: CGFloat = 1080 / 1920
 
     private var mentee: AccountabilityDashboard.MenteeSummary? {
         backend.dashboard?.mentorDashboard.mentees.first
     }
 
-    private let bubbleHeight: CGFloat = 252
-    private let bubbleWidth: CGFloat = 260
+    private let baseBubbleHeight: CGFloat = 252
+    private let baseBubbleWidth: CGFloat = 260
     private let bubbleGap: CGFloat = 8
 
     var body: some View {
         GeometryReader { geo in
+            let narrow = geo.size.width < 500
+            let characterHeight: CGFloat = narrow ? 108 : baseCharacterHeight
+            let bubbleWidth: CGFloat = min(baseBubbleWidth, geo.size.width - 24)
+            let bubbleHeight: CGFloat = narrow ? 224 : baseBubbleHeight
+
             let charWidth = characterHeight * videoAspect
             let travelDistance = max(geo.size.width - charWidth, 0)
             let charX = walker.positionProgress * travelDistance
@@ -328,7 +340,7 @@ struct MenteeCharacterView: View {
                     if !chatOpen { hasAttention = new > 0 }
                 }
         }
-        .frame(height: chatOpen ? characterHeight + bubbleHeight + bubbleGap : characterHeight)
+        .frame(height: chatOpen ? baseCharacterHeight + baseBubbleHeight + bubbleGap : baseCharacterHeight)
         .animation(.spring(response: 0.35, dampingFraction: 0.82), value: chatOpen)
     }
 
