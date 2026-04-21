@@ -122,6 +122,8 @@ struct CalendarSheet: View {
         PerfectDaysYearView(
             year: year,
             perfectDayKeys: perfectDayKeys,
+            dailyCompletionCounts: dailyCompletionCounts,
+            totalHabits: totalHabits,
             displayMode: $displayMode,
             namespace: monthTransitionNamespace,
             onTapMonth: { month in
@@ -189,6 +191,8 @@ private struct PerfectDaysYearView: View {
 
     let year: Int
     let perfectDayKeys: Set<String>
+    let dailyCompletionCounts: [String: Int]
+    let totalHabits: Int
     @Binding var displayMode: CalendarDisplayMode
     let namespace: Namespace.ID
     let onTapMonth: (Int) -> Void
@@ -208,7 +212,10 @@ private struct PerfectDaysYearView: View {
                             MonthHeatmapTile(
                                 month: month,
                                 year: year,
-                                perfectDayKeys: perfectDayKeys
+                                perfectDayKeys: perfectDayKeys,
+                                dailyCompletionCounts: dailyCompletionCounts,
+                                displayMode: displayMode,
+                                totalHabits: totalHabits
                             )
                             .matchedGeometryEffect(id: "month-\(month)", in: namespace, isSource: true)
                             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -229,7 +236,7 @@ private struct PerfectDaysYearView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Perfect Days")
+                Text(displayMode.title)
                     .font(.system(size: 28, weight: .bold, design: .rounded))
                 Text("\(String(year)) · tap a month to zoom")
                     .font(.subheadline)
@@ -240,25 +247,51 @@ private struct PerfectDaysYearView: View {
         }
     }
 
+    @ViewBuilder
     private var legend: some View {
-        HStack(spacing: 14) {
-            LegendDot(title: "none", color: CleanShotTheme.controlFill(for: colorScheme))
-            LegendDot(title: "perfect", color: CleanShotTheme.success)
-            Spacer()
+        if displayMode == .perfectDays {
+            HStack(spacing: 14) {
+                LegendDot(title: "none", color: CleanShotTheme.controlFill(for: colorScheme))
+                LegendDot(title: "perfect", color: CleanShotTheme.success)
+                Spacer()
+            }
+            .padding(.horizontal, 2)
+        } else {
+            HStack(spacing: 10) {
+                ForEach([0, 1, 2, 3, 4], id: \.self) { level in
+                    LegendDot(
+                        title: level == 0 ? "none" : level == 4 ? "high" : "",
+                        color: activityLegendColor(for: level)
+                    )
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 2)
         }
-        .padding(.horizontal, 2)
+    }
+
+    private func activityLegendColor(for level: Int) -> Color {
+        guard level > 0 else {
+            return CleanShotTheme.controlFill(for: colorScheme)
+        }
+        let opacities: [Double] = [0.26, 0.46, 0.68, 0.9]
+        return CleanShotTheme.success.opacity(opacities[max(0, min(level - 1, 3))])
     }
 }
 
 /// Single month tile in the year grid. Renders the month name at the top and
-/// a compact heatmap of small squares — one per day, green if it was a perfect
-/// day, neutral otherwise.
+/// a compact heatmap of small circles — one per day. In perfect-days mode the
+/// circle is green when the day was perfect, neutral otherwise. In activity
+/// mode the circle shades with the ratio of habits completed.
 private struct MonthHeatmapTile: View {
     @Environment(\.colorScheme) private var colorScheme
 
     let month: Int
     let year: Int
     let perfectDayKeys: Set<String>
+    let dailyCompletionCounts: [String: Int]
+    let displayMode: CalendarDisplayMode
+    let totalHabits: Int
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 2.5), count: 7)
 
@@ -273,7 +306,7 @@ private struct MonthHeatmapTile: View {
 
             LazyVGrid(columns: columns, spacing: 2.5) {
                 ForEach(days) { day in
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    Circle()
                         .fill(fill(for: day.key))
                         .aspectRatio(1, contentMode: .fit)
                 }
@@ -292,9 +325,22 @@ private struct MonthHeatmapTile: View {
     }
 
     private func fill(for dayKey: String) -> Color {
-        perfectDayKeys.contains(dayKey)
-            ? CleanShotTheme.success
-            : CleanShotTheme.controlFill(for: colorScheme)
+        if displayMode == .perfectDays {
+            return perfectDayKeys.contains(dayKey)
+                ? CleanShotTheme.success
+                : CleanShotTheme.controlFill(for: colorScheme)
+        }
+        let count = dailyCompletionCounts[dayKey, default: 0]
+        guard count > 0 else {
+            return CleanShotTheme.controlFill(for: colorScheme)
+        }
+        let scaled = Double(count) / Double(max(totalHabits, 1))
+        switch scaled {
+        case ..<0.25: return CleanShotTheme.success.opacity(0.26)
+        case ..<0.5:  return CleanShotTheme.success.opacity(0.46)
+        case ..<0.75: return CleanShotTheme.success.opacity(0.68)
+        default:      return CleanShotTheme.success.opacity(0.9)
+        }
     }
 }
 
