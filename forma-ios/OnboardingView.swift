@@ -131,6 +131,10 @@ struct OnboardingView: View {
                     .font(.system(size: 14))
                     .padding(.leading, 16)
                     .focused($fieldFocused)
+                    .autocorrectionDisabled(false)
+                    #if os(iOS)
+                    .textInputAutocapitalization(.sentences)
+                    #endif
                     .onSubmit(addHabit)
 
                 if !habitInput.isEmpty {

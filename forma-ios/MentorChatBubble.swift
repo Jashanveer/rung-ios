@@ -9,6 +9,7 @@ struct MentorChatBubble: View {
     let onClose: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    @FocusState private var inputFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -75,14 +76,22 @@ struct MentorChatBubble: View {
 
             // Input row
             HStack(spacing: 8) {
-                TextField("Message...", text: $messageText)
+                TextField("Message...", text: $messageText, axis: .vertical)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 12))
+                    .font(.system(size: 13))
+                    .lineLimit(1...4)
+                    .focused($inputFocused)
+                    .submitLabel(.send)
+                    #if os(iOS)
+                    .textInputAutocapitalization(.sentences)
+                    .keyboardType(.default)
+                    .autocorrectionDisabled(false)
+                    #endif
                     .onSubmit(onSend)
 
                 Button(action: onSend) {
                     Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 20))
+                        .font(.system(size: 22))
                         .foregroundStyle(
                             messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                                 ? Color.secondary : Color.green
@@ -93,6 +102,17 @@ struct MentorChatBubble: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
+            .contentShape(Rectangle())
+            .onTapGesture { inputFocused = true }
+        }
+        .onAppear {
+            // Pop the keyboard on the next runloop so the bubble's transition
+            // has settled before the responder changes. A longer delay lets
+            // iOS surface the keyboard even when the bubble opens mid-spring.
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 450_000_000)
+                inputFocused = true
+            }
         }
         .background(bubbleBackground)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))

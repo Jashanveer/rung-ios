@@ -89,6 +89,19 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         print("[APNs] Registration failed: \(error.localizedDescription)")
     }
 
+    // Forma is landscape-only on iPad, portrait-only on iPhone. This enforces
+    // the Info.plist settings at runtime so third-party rotation events are
+    // also refused.
+    func application(
+        _ application: UIApplication,
+        supportedInterfaceOrientationsFor window: UIWindow?
+    ) -> UIInterfaceOrientationMask {
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            return .landscape
+        }
+        return .portrait
+    }
+
     func application(
         _ application: UIApplication,
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],

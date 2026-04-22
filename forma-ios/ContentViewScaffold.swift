@@ -20,7 +20,6 @@ struct ContentViewScaffold: View {
     @Binding var mentorNudge: String?
     let showMentorCharacter: Bool
     let showMenteeCharacter: Bool
-    let mentorMissedCount: Int
 
     let showOnboarding: Bool
 
@@ -31,7 +30,6 @@ struct ContentViewScaffold: View {
     let onToggleHabit: (Habit) -> Void
     let onDeleteHabit: (Habit) -> Void
     let onSync: () -> Void
-    let onFindMentor: () -> Void
     let onReminderChange: (Habit, HabitReminderWindow?) -> Void
     let onCompleteOnboarding: ([String]) -> Void
 
@@ -63,7 +61,6 @@ struct ContentViewScaffold: View {
             mentorNudge: $mentorNudge,
             showMentorCharacter: showMentorCharacter,
             showMenteeCharacter: showMenteeCharacter,
-            mentorMissedCount: mentorMissedCount,
             showOnboarding: showOnboarding,
             stampNamespace: stampNamespace,
             stampStagingIds: stampStagingIds,
@@ -71,7 +68,6 @@ struct ContentViewScaffold: View {
             onToggleHabit: onToggleHabit,
             onDeleteHabit: onDeleteHabit,
             onSync: onSync,
-            onFindMentor: onFindMentor,
             onReminderChange: onReminderChange,
             onCompleteOnboarding: onCompleteOnboarding
         )
@@ -83,6 +79,9 @@ struct ContentViewScaffold: View {
     private var padOrMacScaffold: some View {
         ZStack {
             MinimalBackground()
+                #if os(iOS)
+                .ignoresSafeArea()
+                #endif
                 .zIndex(-1)
 
             DoneHabitPillsBackground(
@@ -155,7 +154,6 @@ struct ContentViewScaffold: View {
                         backend: backend,
                         habits: habits.filter { $0.entryType == .habit },
                         onSync: onSync,
-                        onFindMentor: onFindMentor,
                         onReminderChange: onReminderChange
                     )
                     .frame(width: 330)
@@ -277,31 +275,29 @@ struct ContentViewScaffold: View {
             .transition(.opacity)
             .zIndex(200)
         }
+        // Walking characters — pinned to the bottom of the scaffold on both
+        // iPad and macOS. Width is capped on iPad so the character walks
+        // within a band aligned to the center panel rather than wandering
+        // across the full ~1200pt window. `.ignoresSafeArea(.keyboard)`
+        // keeps them on-screen when a text field brings up the keyboard.
         .overlay(alignment: .bottom) {
             if showMentorCharacter && backend.isAuthenticated {
                 MentorCharacterView(backend: backend, nudge: $mentorNudge)
+                    #if os(iOS)
+                    .frame(maxWidth: 720)
+                    .ignoresSafeArea(.keyboard)
+                    #endif
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .overlay(alignment: .bottom) {
             if showMenteeCharacter && backend.isAuthenticated {
-                MenteeCharacterView(backend: backend, mentorMissedCount: mentorMissedCount)
+                MenteeCharacterView(backend: backend)
+                    #if os(iOS)
+                    .frame(maxWidth: 720)
+                    .ignoresSafeArea(.keyboard)
+                    #endif
                     .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }
-        .overlay(alignment: .bottomLeading) {
-            if showMenteeCharacter && backend.isAuthenticated && mentorMissedCount > 0 {
-                MentorAlertBanner(
-                    missedCount: mentorMissedCount,
-                    mentees: backend.dashboard?.mentorDashboard.mentees ?? [],
-                    onNudge: { matchId in
-                        Task { await backend.sendNudge(matchId: matchId) }
-                    }
-                )
-                .padding(.leading, 20)
-                .padding(.bottom, 148)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .animation(.spring(response: 0.4, dampingFraction: 0.82), value: mentorMissedCount)
             }
         }
         #if os(macOS)

@@ -341,14 +341,25 @@ struct FloatingHabitBackground: View {
 
     var body: some View {
         GeometryReader { geo in
+            // On iPhone the login form occupies the center — keep pills to the
+            // top/bottom strips only and thin them so the screen isn't crowded.
+            // iPad stays with the full set.
+            let narrow = geo.size.width < 500
+            let displayItems: [HabitItem] = narrow
+                ? items
+                    .filter { $0.y < 0.30 || $0.y > 0.65 }
+                    .enumerated()
+                    .compactMap { idx, item in idx % 3 == 0 ? nil : item }
+                : items
+
             TimelineView(.animation) { timeline in
                 let t = timeline.date.timeIntervalSinceReferenceDate
 
                 ZStack {
                     baseBackground
 
-                    ForEach(items.indices, id: \.self) { i in
-                        let item = items[i]
+                    ForEach(displayItems.indices, id: \.self) { i in
+                        let item = displayItems[i]
                         let theta = t * item.speed * 2 * .pi + item.phase
                         let offsetX = cos(theta) * item.amplitudeX
                         let offsetY = sin(theta) * item.amplitudeY
@@ -455,27 +466,31 @@ struct AuthGateView: View {
 
             FloatingHabitBackground()
                 .ignoresSafeArea()
+                .allowsHitTesting(false)
 
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    topBar
-                        .padding(.top, 8)
-                        .padding(.bottom, 22)
+            GeometryReader { geo in
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        topBar
+                            .padding(.top, 8)
+                            .padding(.bottom, 22)
 
-                    switch step {
-                    case .signIn: signInContent
-                    case .signUp: signUpContent
-                    case .verify: verifyContent
+                        switch step {
+                        case .signIn: signInContent
+                        case .signUp: signUpContent
+                        case .verify: verifyContent
+                        }
                     }
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 24)
+                    .frame(maxWidth: 460, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: geo.size.height, alignment: .center)
                 }
-                .padding(.horizontal, 22)
-                .padding(.bottom, 40)
-                .frame(maxWidth: 460, alignment: .leading)
-                .frame(maxWidth: .infinity)
+                #if os(iOS)
+                .scrollDismissesKeyboard(.interactively)
+                #endif
             }
-            #if os(iOS)
-            .scrollDismissesKeyboard(.interactively)
-            #endif
         }
         .onChange(of: step) { _, _ in
             validationMessage = nil
@@ -568,7 +583,7 @@ struct AuthGateView: View {
             }
 
             VStack(spacing: 12) {
-                AuthTextField(placeholder: "Username", text: $username, isSecure: false, colorScheme: colorScheme)
+                AuthTextField(placeholder: "Username", text: $username, isSecure: false, colorScheme: colorScheme, autoFocus: true)
                 AuthTextField(placeholder: "Password", text: $password, isSecure: true, colorScheme: colorScheme)
             }
 
@@ -628,7 +643,7 @@ struct AuthGateView: View {
             }
 
             VStack(spacing: 12) {
-                AuthTextField(placeholder: "Username", text: $username, isSecure: false, colorScheme: colorScheme)
+                AuthTextField(placeholder: "Username", text: $username, isSecure: false, colorScheme: colorScheme, autoFocus: true)
                 AuthTextField(placeholder: "Email", text: $email, isSecure: false, colorScheme: colorScheme)
                 AuthTextField(placeholder: "Password (8+ characters)", text: $password, isSecure: true, colorScheme: colorScheme)
             }
@@ -853,6 +868,7 @@ private struct AuthTextField: View {
     @Binding var text: String
     let isSecure: Bool
     let colorScheme: ColorScheme
+    var autoFocus: Bool = false
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -877,6 +893,14 @@ private struct AuthTextField: View {
             )
             .focused($isFocused)
             .animation(.smooth(duration: 0.14), value: isFocused)
+            .contentShape(Capsule())
+            .onTapGesture { isFocused = true }
+            .onAppear {
+                guard autoFocus else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    isFocused = true
+                }
+            }
     }
 
     @ViewBuilder

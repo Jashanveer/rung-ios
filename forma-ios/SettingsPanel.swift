@@ -29,7 +29,6 @@ struct SettingsPanel: View {
     @ObservedObject var backend: HabitBackendStore
     let habits: [Habit]
     let onSync: () -> Void
-    let onFindMentor: () -> Void
     let onReminderChange: (Habit, HabitReminderWindow?) -> Void
 
     #if os(iOS)
@@ -59,8 +58,6 @@ struct SettingsPanel: View {
                 }
 
                 if mode == .friends || mode == .combined {
-                    MentorActionCard(metrics: metrics, dashboard: backend.dashboard, onFindMentor: onFindMentor)
-
                     SocialSummaryCard(metrics: metrics, dashboard: backend.dashboard)
 
                     SocialFeedCard(dashboard: backend.dashboard)
@@ -359,99 +356,6 @@ struct FriendsLeaderboardCard: View {
         case 3: return "medal"
         default: return "circle.fill"
         }
-    }
-}
-
-struct MentorActionCard: View {
-    let metrics: HabitMetrics
-    let dashboard: AccountabilityDashboard?
-    let onFindMentor: () -> Void
-
-    private var status: AccountabilityDashboard.MentorshipStatus? {
-        dashboard?.mentorship
-    }
-
-    private var mentorName: String? {
-        dashboard?.match?.mentor.displayName
-    }
-
-    private var canFindMentor: Bool {
-        status?.canFindMentor ?? (metrics.totalHabits > 0 && metrics.daysUntilMentor == 0)
-    }
-
-    private var canChangeMentor: Bool {
-        status?.canChangeMentor ?? false
-    }
-
-    private var message: String {
-        if let message = status?.message {
-            return message
-        }
-
-        if canFindMentor {
-            return "Find a mentor when you want extra accountability."
-        }
-
-        return "Mentor matching unlocks after 7 days of habit data."
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            PanelTitle(systemImage: "person.crop.circle.badge.checkmark", title: "Mentor")
-
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: mentorName == nil ? "person.badge.plus" : "checkmark.seal")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(mentorName == nil ? CleanShotTheme.accent : CleanShotTheme.success)
-                    .frame(width: 30, height: 30)
-                    .cleanShotSurface(shape: Circle(), level: .control)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title)
-                        .font(.subheadline.weight(.semibold))
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            if shouldShowButton {
-                SoftActionButton(title: buttonTitle, systemImage: buttonIcon, action: onFindMentor)
-                    .disabled(!buttonEnabled)
-                    .opacity(buttonEnabled ? 1 : 0.55)
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .cleanShotSurface(
-            shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
-            level: .control
-        )
-    }
-
-    private var title: String {
-        if let mentorName {
-            return "Matched with \(mentorName)"
-        }
-
-        return canFindMentor ? "Mentor available" : "Mentor locked"
-    }
-
-    private var shouldShowButton: Bool {
-        mentorName == nil ? canFindMentor : true
-    }
-
-    private var buttonTitle: String {
-        mentorName == nil ? "Find mentor" : "Change mentor"
-    }
-
-    private var buttonIcon: String {
-        mentorName == nil ? "person.badge.plus" : "arrow.triangle.2.circlepath"
-    }
-
-    private var buttonEnabled: Bool {
-        mentorName == nil ? canFindMentor : canChangeMentor
     }
 }
 
@@ -1031,3 +935,4 @@ private struct TimeReminderOptionButton: View {
         .pressHover($isHovered)
     }
 }
+

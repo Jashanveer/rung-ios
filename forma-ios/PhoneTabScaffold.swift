@@ -21,7 +21,6 @@ struct PhoneTabScaffold: View {
     @Binding var mentorNudge: String?
     let showMentorCharacter: Bool
     let showMenteeCharacter: Bool
-    let mentorMissedCount: Int
 
     let showOnboarding: Bool
 
@@ -32,7 +31,6 @@ struct PhoneTabScaffold: View {
     let onToggleHabit: (Habit) -> Void
     let onDeleteHabit: (Habit) -> Void
     let onSync: () -> Void
-    let onFindMentor: () -> Void
     let onReminderChange: (Habit, HabitReminderWindow?) -> Void
     let onCompleteOnboarding: ([String]) -> Void
 
@@ -125,7 +123,7 @@ struct PhoneTabScaffold: View {
             }
 
             if showMenteeCharacter && backend.isAuthenticated {
-                MenteeCharacterView(backend: backend, mentorMissedCount: mentorMissedCount)
+                MenteeCharacterView(backend: backend)
                     .frame(maxHeight: .infinity, alignment: .bottom)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .ignoresSafeArea(.keyboard)
@@ -177,7 +175,6 @@ struct PhoneTabScaffold: View {
                 backend: backend,
                 habits: habits.filter { $0.entryType == .habit },
                 onSync: onSync,
-                onFindMentor: onFindMentor,
                 onReminderChange: onReminderChange
             )
             .padding(.horizontal, 16)
@@ -197,7 +194,6 @@ struct PhoneTabScaffold: View {
                 backend: backend,
                 habits: habits.filter { $0.entryType == .habit },
                 onSync: onSync,
-                onFindMentor: onFindMentor,
                 onReminderChange: onReminderChange
             )
             .padding(.horizontal, 16)

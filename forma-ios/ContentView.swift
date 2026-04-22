@@ -37,16 +37,22 @@ struct ContentView: View {
     private var todayKey: String { DateKey.key(for: Date()) }
     private var metrics: HabitMetrics { HabitMetrics.compute(for: habits, todayKey: todayKey) }
 
+    // AI mentor is always visible once the user is signed in — no preview
+    // toggle and no 7-day gate. The auto-matching flow has been retired (see
+    // task: unlock mentor as AI default).
     private var showMentorCharacter: Bool {
-        return backend.dashboard?.match != nil
+        backend.isAuthenticated
     }
 
+    // Mentee slot shows a top-leaderboard friend. Visible when the user has
+    // at least one friend who appears on the leaderboard. `friendCount` is a
+    // cheap proxy — the RiveCharacterView downstream picks the actual
+    // leaderboard entry to display, and renders nothing when the pool is empty.
     private var showMenteeCharacter: Bool {
-        return (backend.dashboard?.mentorDashboard.activeMenteeCount ?? 0) > 0
-    }
-
-    private var mentorMissedCount: Int {
-        backend.dashboard?.mentorDashboard.mentees.reduce(0) { $0 + $1.missedHabitsToday } ?? 0
+        guard backend.isAuthenticated else { return false }
+        let friendCount = backend.dashboard?.social?.friendCount ?? 0
+        let leaderboard = backend.dashboard?.weeklyChallenge.leaderboard ?? []
+        return friendCount > 0 && !leaderboard.isEmpty
     }
 
     var body: some View {
@@ -65,7 +71,6 @@ struct ContentView: View {
             mentorNudge: $mentorNudge,
             showMentorCharacter: showMentorCharacter,
             showMenteeCharacter: showMenteeCharacter,
-            mentorMissedCount: mentorMissedCount,
             showOnboarding: showOnboarding,
             stampNamespace: stampNamespace,
             stampStagingIds: stampStagingIds,
@@ -73,7 +78,6 @@ struct ContentView: View {
             onToggleHabit: toggleHabit,
             onDeleteHabit: archiveHabit,
             onSync: syncWithBackend,
-            onFindMentor: assignMentor,
             onReminderChange: updateReminderWindow,
             onCompleteOnboarding: completeOnboarding
         )
@@ -563,10 +567,6 @@ struct ContentView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
             withAnimation(.easeOut(duration: 0.5)) { showCelebration = false }
         }
-    }
-
-    private func assignMentor() {
-        Task { await backend.assignMentor() }
     }
 
     private func refreshTimeReminders() {

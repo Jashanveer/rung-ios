@@ -1,5 +1,8 @@
 import AVFoundation
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // MARK: - Mentor Character + Chat Bubble
 
@@ -16,12 +19,33 @@ struct MentorCharacterView: View {
     @State private var visibleNudge: String? = nil
     @State private var nudgeShown = false
     @State private var nudgeDismissTask: Task<Void, Never>? = nil
+    @State private var isSending = false
+    // Keyboard height — used to lift the floating chat bubble above the
+    // on-screen keyboard on iOS/iPadOS. The bubble is positioned via
+    // `.position(...)`, which opts out of SwiftUI's automatic keyboard
+    // avoidance, so we track it manually.
+    @State private var keyboardHeight: CGFloat = 0
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
 
     private let baseCharacterHeight: CGFloat = 130
     private let videoAspect: CGFloat = 1080 / 1920
 
+    /// Bruce's .mov has ~12pt of transparent footer within each 130pt frame.
+    /// Sinking the frame's center by this fraction (~12/130) places the
+    /// visible feet exactly on the scaffold's bottom edge.
+    private var verticalSinkFraction: CGFloat {
+        #if os(iOS)
+        if horizontalSizeClass == .compact { return 0.15 }
+        return 0.35
+        #else
+        return 0.35
+        #endif
+    }
+
     private var mentorName: String {
-        backend.dashboard?.match?.mentor.displayName ?? "Mentor"
+        "Bruce"
     }
 
     private var messages: [AccountabilityDashboard.Message] {
@@ -46,19 +70,21 @@ struct MentorCharacterView: View {
             let travelDistance = max(geo.size.width - charWidth, 0)
             let charX = walker.positionProgress * travelDistance
             let characterHeadX = charX + charWidth / 2
-            // The visible character occupies ~85% of the frame (bottom 15% is ground offset)
-            let visibleCharTop = characterHeight * 0.85
+            // Tuned so the bubble sits just above the visible character head,
+            // not above the frame's empty top padding.
+            let visibleCharTop = characterHeight * 0.55
 
             LoopingVideoView(videoName: "walk-bruce-01", isPlaying: walker.isWalking)
                 .frame(width: charWidth, height: characterHeight)
                 .scaleEffect(x: walker.goingRight ? 1 : -1, y: 1, anchor: .center)
-                .position(
-                    x: charX + charWidth / 2,
-                    y: geo.size.height - characterHeight / 2 + characterHeight * 0.15
-                )
+                .contentShape(Rectangle())
                 .onTapGesture {
                     toggleChat()
                 }
+                .position(
+                    x: charX + charWidth / 2,
+                    y: geo.size.height - characterHeight / 2 + characterHeight * verticalSinkFraction
+                )
 
             if hasUnread && !chatOpen {
                 Circle()
@@ -75,9 +101,14 @@ struct MentorCharacterView: View {
                     )
             }
 
-            // Chat bubble — positioned just above the character's head
+            // Chat bubble — positioned just above the character's head.
+            // Lift further when the keyboard is up so the input isn't covered.
             if chatOpen {
-                let bubbleY = geo.size.height - visibleCharTop - bubbleGap - bubbleHeight / 2
+                let rawBubbleY = geo.size.height - visibleCharTop - bubbleGap - bubbleHeight / 2
+                let keyboardLift: CGFloat = keyboardHeight > 0
+                    ? max(0, (bubbleHeight / 2 + 16) - (geo.size.height - keyboardHeight - rawBubbleY))
+                    : 0
+                let bubbleY = rawBubbleY - keyboardLift
                 let bubbleCenterX = characterHeadX
                 let clampedX = clamped(bubbleCenterX, lowerBound: bubbleWidth / 2 + 8, upperBound: geo.size.width - bubbleWidth / 2 - 8)
                 let anchorX = (bubbleCenterX - (clampedX - bubbleWidth / 2)) / bubbleWidth
@@ -98,6 +129,7 @@ struct MentorCharacterView: View {
                 .opacity(chatShown ? 1 : 0)
                 .position(x: clampedX, y: bubbleY)
                 .animation(.spring(response: 0.35, dampingFraction: 0.78), value: chatShown)
+                .animation(.easeOut(duration: 0.25), value: keyboardHeight)
                 .zIndex(10)
             }
 
@@ -122,6 +154,7 @@ struct MentorCharacterView: View {
             }
 
             Color.clear
+                .allowsHitTesting(false)
                 .onAppear {
                     walker.travelDistance = travelDistance
                     walker.start()
@@ -134,6 +167,19 @@ struct MentorCharacterView: View {
                         hasUnread = true
                     }
                 }
+                #if canImport(UIKit)
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+                    guard
+                        let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect
+                    else { return }
+                    let screenH = UIScreen.main.bounds.height
+                    // Keyboard height above the screen edge; 0 when dismissed.
+                    keyboardHeight = max(0, screenH - frame.origin.y)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                    keyboardHeight = 0
+                }
+                #endif
                 .onChange(of: nudge) { _, newValue in
                     guard let msg = newValue else { return }
                     nudgeDismissTask?.cancel()
@@ -177,6 +223,14 @@ struct MentorCharacterView: View {
         }
 
         Task {
+            // Ensure Bruce (the AI mentor match) exists before the user can
+            // type. The backend's /dashboard endpoint auto-creates the AI
+            // mentor match on first call for any account — so a fresh pull
+            // is the right primitive when we open the chat cold.
+            if backend.dashboard?.match?.id == nil {
+                await backend.responseCache.invalidateDashboard()
+                await backend.refreshDashboard()
+            }
             await backend.markMatchRead(matchID: backend.dashboard?.match?.id)
         }
 
@@ -215,11 +269,24 @@ struct MentorCharacterView: View {
 
     private func sendMessage() {
         let text = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        guard let matchID = backend.dashboard?.match?.id else { return }
+        guard !text.isEmpty, !isSending else { return }
+        isSending = true
         messageText = ""
 
         Task {
+            defer { Task { @MainActor in isSending = false } }
+            // On a fresh account the AI mentor match is created lazily on the
+            // first dashboard pull. If the user opens the bubble and sends
+            // before the pull lands, `match.id` is nil — invalidate and pull
+            // once so the Claude round-trip still runs on the very first send.
+            if backend.dashboard?.match?.id == nil {
+                await backend.responseCache.invalidateDashboard()
+                await backend.refreshDashboard()
+            }
+            guard let matchID = backend.dashboard?.match?.id else {
+                await MainActor.run { messageText = text }
+                return
+            }
             await backend.sendMenteeMessage(matchId: matchID, message: text)
         }
     }
@@ -231,18 +298,85 @@ struct MentorCharacterView: View {
 /// Represents a person the current user is mentoring in the social hub.
 struct MenteeCharacterView: View {
     @ObservedObject var backend: HabitBackendStore
-    let mentorMissedCount: Int
     @State private var walker = WalkerState()
     @State private var chatOpen = false
     @State private var chatShown = false
     @State private var chatAnimationTask: Task<Void, Never>? = nil
     @State private var hasAttention = false
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
 
     private let baseCharacterHeight: CGFloat = 130
     private let videoAspect: CGFloat = 1080 / 1920
 
-    private var mentee: AccountabilityDashboard.MenteeSummary? {
-        backend.dashboard?.mentorDashboard.mentees.first
+    private var verticalSinkFraction: CGFloat {
+        #if os(iOS)
+        if horizontalSizeClass == .compact { return 0.15 }
+        return 0.35
+        #else
+        return 0.35
+        #endif
+    }
+
+    /// The friend whose stats we surface on the orange character.
+    ///
+    /// Product rule: show the top leaderboard friend so the user sees who
+    /// they're chasing. If the current user is already at rank 1, fall back
+    /// to rank 2 (the nearest challenger). Falls back to the social feed
+    /// (what the user sees in the leaderboard pill) when the weekly challenge
+    /// leaderboard is empty, so the rival stays in sync with what the user
+    /// actually sees on-screen.
+    private var topFriend: TopFriendSnapshot? {
+        guard let dashboard = backend.dashboard else { return nil }
+
+        let updates = dashboard.social?.updates ?? []
+        let suggestions = dashboard.social?.suggestions ?? []
+
+        // 1. Prefer weekly-challenge leaderboard (perfect-day score).
+        let entries = dashboard.weeklyChallenge.leaderboard
+        if !entries.isEmpty {
+            let first = entries.first
+            let target: (entry: AccountabilityDashboard.LeaderboardEntry, rank: Int)?
+            if first?.currentUser == true, entries.count >= 2 {
+                target = (entries[1], 2)
+            } else if let first, !first.currentUser {
+                target = (first, 1)
+            } else {
+                target = nil
+            }
+            if let target {
+                let match = updates.first { $0.displayName == target.entry.displayName }
+                let suggestionMatch = suggestions.first { $0.displayName == target.entry.displayName }
+                return TopFriendSnapshot(
+                    displayName: target.entry.displayName,
+                    perfectDays: target.entry.score,
+                    weeklyConsistencyPercent: match?.weeklyConsistencyPercent ?? suggestionMatch?.weeklyConsistencyPercent,
+                    progressPercent: match?.progressPercent ?? suggestionMatch?.progressPercent,
+                    rank: target.rank
+                )
+            }
+        }
+
+        // 2. Fall back to the same feed the leaderboard pill uses —
+        // `social.updates` sorted by weekly consistency, then today's progress.
+        let sortedUpdates = updates.sorted {
+            if $0.weeklyConsistencyPercent != $1.weeklyConsistencyPercent {
+                return $0.weeklyConsistencyPercent > $1.weeklyConsistencyPercent
+            }
+            return $0.progressPercent > $1.progressPercent
+        }
+        if let top = sortedUpdates.first {
+            return TopFriendSnapshot(
+                displayName: top.displayName,
+                perfectDays: 0,
+                weeklyConsistencyPercent: top.weeklyConsistencyPercent,
+                progressPercent: top.progressPercent,
+                rank: 1
+            )
+        }
+
+        return nil
     }
 
     private let baseBubbleHeight: CGFloat = 252
@@ -260,17 +394,18 @@ struct MenteeCharacterView: View {
             let travelDistance = max(geo.size.width - charWidth, 0)
             let charX = walker.positionProgress * travelDistance
             let characterHeadX = charX + charWidth / 2
-            let visibleCharTop = characterHeight * 0.85
+            let visibleCharTop = characterHeight * 0.55
 
             // Jazz — the orange lil-agent character
             LoopingVideoView(videoName: "walk-jazz-01", isPlaying: walker.isWalking)
                 .frame(width: charWidth, height: characterHeight)
                 .scaleEffect(x: walker.goingRight ? 1 : -1, y: 1, anchor: .center)
-            .position(
-                x: charX + charWidth / 2,
-                y: geo.size.height - characterHeight / 2 + characterHeight * 0.15
-            )
-            .onTapGesture { toggleChat() }
+                .contentShape(Rectangle())
+                .onTapGesture { toggleChat() }
+                .position(
+                    x: charX + charWidth / 2,
+                    y: geo.size.height - characterHeight / 2 + characterHeight * verticalSinkFraction
+                )
 
             // Attention badge when mentee missed habits today
             if hasAttention && !chatOpen {
@@ -288,24 +423,6 @@ struct MenteeCharacterView: View {
                     )
             }
 
-            // Mentor missed count badge — shown when any mentee has missed habits today
-            if mentorMissedCount > 0 && !chatOpen {
-                ZStack {
-                    Circle()
-                        .fill(CleanShotTheme.warning)
-                    Text("\(mentorMissedCount)")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white)
-                }
-                .frame(width: 18, height: 18)
-                .position(
-                    x: charX + 4,
-                    y: geo.size.height - visibleCharTop - 4
-                )
-                .transition(.scale.combined(with: .opacity))
-                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: mentorMissedCount)
-            }
-
             // Chat bubble anchored above the character's head
             if chatOpen {
                 let bubbleY = geo.size.height - visibleCharTop - bubbleGap - bubbleHeight / 2
@@ -313,31 +430,36 @@ struct MenteeCharacterView: View {
                 let anchorX = (characterHeadX - (clampedX - bubbleWidth / 2)) / bubbleWidth
                 let scaleAnchor = UnitPoint(x: clamped(anchorX, lowerBound: 0, upperBound: 1), y: 1)
 
-                if let mentee {
-                    MenteeChatBubble(mentee: mentee, onSend: sendMessage, onClose: closeChat)
-                        .frame(width: bubbleWidth, height: bubbleHeight)
-                        .scaleEffect(chatShown ? 1 : 0.05, anchor: scaleAnchor)
-                        .opacity(chatShown ? 1 : 0)
-                        .position(x: clampedX, y: bubbleY)
-                        .animation(.spring(response: 0.35, dampingFraction: 0.78), value: chatShown)
-                        .zIndex(10)
+                Group {
+                    if let topFriend {
+                        MenteeChatBubble(friend: topFriend, onClose: closeChat)
+                    } else {
+                        MenteeEmptyChatBubble(onClose: closeChat)
+                    }
                 }
+                .frame(width: bubbleWidth, height: bubbleHeight)
+                .scaleEffect(chatShown ? 1 : 0.05, anchor: scaleAnchor)
+                .opacity(chatShown ? 1 : 0)
+                .position(x: clampedX, y: bubbleY)
+                .animation(.spring(response: 0.35, dampingFraction: 0.78), value: chatShown)
+                .zIndex(10)
             }
 
             Color.clear
+                .allowsHitTesting(false)
                 .onAppear {
                     // Start mentee on the right side so they walk toward the mentor
                     walker.positionProgress = 0.7
                     walker.goingRight = false
                     walker.travelDistance = travelDistance
                     walker.start()
-                    hasAttention = (mentee?.missedHabitsToday ?? 0) > 0
+                    hasAttention = (topFriend?.progressPercent ?? 100) < 100
                 }
                 .onChange(of: geo.size.width) { _, _ in
                     walker.travelDistance = travelDistance
                 }
-                .onChange(of: mentee?.missedHabitsToday ?? 0) { _, new in
-                    if !chatOpen { hasAttention = new > 0 }
+                .onChange(of: topFriend?.progressPercent ?? 100) { _, new in
+                    if !chatOpen { hasAttention = new < 100 }
                 }
         }
         .frame(height: chatOpen ? baseCharacterHeight + baseBubbleHeight + bubbleGap : baseCharacterHeight)
@@ -372,74 +494,8 @@ struct MenteeCharacterView: View {
         }
     }
 
-    private func sendMessage(_ text: String) async {
-        guard let matchId = mentee?.matchId else { return }
-        await backend.sendMenteeMessage(matchId: matchId, message: text)
-    }
-
     private func clamped(_ value: CGFloat, lowerBound: CGFloat, upperBound: CGFloat) -> CGFloat {
         min(max(value, lowerBound), upperBound)
     }
 }
 
-// MARK: - Mentor Alert Banner
-
-/// Shown above the mentee character when any mentees have missed habits today.
-struct MentorAlertBanner: View {
-    let missedCount: Int
-    let mentees: [AccountabilityDashboard.MenteeSummary]
-    let onNudge: (Int64) -> Void
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var menteesWithMissed: [AccountabilityDashboard.MenteeSummary] {
-        mentees.filter { $0.missedHabitsToday > 0 }
-    }
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "bell.badge.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(CleanShotTheme.warning)
-
-            Text("\(menteesWithMissed.count) mentee\(menteesWithMissed.count == 1 ? "" : "s") need a nudge today")
-                .font(.caption.weight(.semibold))
-                .lineLimit(1)
-
-            Spacer()
-
-            // Send nudge buttons per mentee with missed habits
-            ForEach(menteesWithMissed.prefix(3)) { mentee in
-                Button {
-                    onNudge(mentee.matchId)
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(mentee.displayName)
-                            .lineLimit(1)
-                            .frame(maxWidth: 60)
-                        Image(systemName: "hand.wave.fill")
-                    }
-                    .font(.caption2.weight(.semibold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                }
-                .buttonStyle(.bordered)
-                .tint(CleanShotTheme.warning)
-                .controlSize(.mini)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(colorScheme == .dark
-                      ? CleanShotTheme.warning.opacity(0.15)
-                      : CleanShotTheme.warning.opacity(0.08))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(CleanShotTheme.warning.opacity(0.3), lineWidth: 0.8)
-                )
-        )
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.4 : 0.1), radius: 8, y: 2)
-    }
-}

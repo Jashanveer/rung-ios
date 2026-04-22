@@ -37,6 +37,13 @@ struct AddHabitBar: View {
                     .font(.system(size: 14))
                     .padding(.leading, 16)
                     .focused($fieldFocused)
+                    // Habits can't be renamed after creation, so surface
+                    // autocorrect + sentence-case spell-check before the user
+                    // commits to living with the spelling.
+                    .autocorrectionDisabled(false)
+                    #if os(iOS)
+                    .textInputAutocapitalization(.sentences)
+                    #endif
                     .onChange(of: newHabitTitle) { _, _ in showValidationError = false }
                     .onSubmit(attemptAdd)
 
@@ -1050,12 +1057,22 @@ struct DoneHabitPillsBackground: View {
     private func computeLayout(in size: CGSize) -> [PersistentIdentifier: Slot] {
         guard size.width > 0, size.height > 0, !habits.isEmpty else { return [:] }
 
-        let ordered = habits.sorted { $0.createdAt < $1.createdAt }
+        let narrow = size.width < 500
+        // On narrow screens the middle of the layout is occupied edge-to-edge by
+        // the habit list / input card — leave only thin strips at the very top
+        // and very bottom for ambient stamps, and cap the number of stamps so
+        // they don't crowd those strips.
+        let widthRatio: CGFloat = narrow ? 0.96 : Self.noFlyCenterWidthRatio
+        let heightRatio: CGFloat = narrow ? 0.62 : Self.noFlyCenterHeightRatio
+        let narrowMaxStamps = 4
+
+        let sortedHabits = habits.sorted { $0.createdAt < $1.createdAt }
+        let ordered = narrow ? Array(sortedHabits.prefix(narrowMaxStamps)) : sortedHabits
         let noFly = CGRect(
-            x: size.width * (1 - Self.noFlyCenterWidthRatio) / 2,
-            y: size.height * (1 - Self.noFlyCenterHeightRatio) / 2,
-            width: size.width * Self.noFlyCenterWidthRatio,
-            height: size.height * Self.noFlyCenterHeightRatio
+            x: size.width * (1 - widthRatio) / 2,
+            y: size.height * (1 - heightRatio) / 2,
+            width: size.width * widthRatio,
+            height: size.height * heightRatio
         )
 
         var placed: [CGPoint] = []
@@ -1118,10 +1135,15 @@ struct DoneHabitPillsBackground: View {
         noFly: CGRect,
         placed: [CGPoint]
     ) -> CGPoint {
-        let minX = Self.stampMarginX
-        let maxX = max(minX + 1, size.width - Self.stampMarginX)
-        let minY = Self.stampMarginY
-        let maxY = max(minY + 1, size.height - Self.stampMarginY)
+        let narrow = size.width < 500
+        let marginX: CGFloat = narrow ? 14 : Self.stampMarginX
+        let marginY: CGFloat = narrow ? 40 : Self.stampMarginY
+        let pushDistance: CGFloat = narrow ? 60 : 24
+
+        let minX = marginX
+        let maxX = max(minX + 1, size.width - marginX)
+        let minY = marginY
+        let maxY = max(minY + 1, size.height - marginY)
 
         var best: CGPoint = CGPoint(x: minX, y: minY)
         var bestScore: CGFloat = -.infinity
@@ -1135,16 +1157,31 @@ struct DoneHabitPillsBackground: View {
             )
 
             if noFly.contains(candidate) {
-                // Push candidate toward the nearest edge of the no-fly rect
-                let dLeft = candidate.x - noFly.minX
-                let dRight = noFly.maxX - candidate.x
-                let dTop = candidate.y - noFly.minY
-                let dBottom = noFly.maxY - candidate.y
-                let minD = min(dLeft, dRight, dTop, dBottom)
-                if minD == dLeft { candidate.x = noFly.minX - 24 }
-                else if minD == dRight { candidate.x = noFly.maxX + 24 }
-                else if minD == dTop { candidate.y = noFly.minY - 24 }
-                else { candidate.y = noFly.maxY + 24 }
+                if narrow {
+                    // Narrow screens have nearly-full-width no-fly (no left/right
+                    // slivers to speak of) — pick the nearer of the top/bottom
+                    // strips and re-seed y within that strip so the stamps
+                    // spread rather than stacking at the strip boundary.
+                    let ry = fract(sin(seed * (917.3 + Double(attempt) * 3.1)) * 28417.9)
+                    let topMaxY = max(minY + 1, noFly.minY - pushDistance)
+                    let botMinY = min(maxY - 1, noFly.maxY + pushDistance)
+                    if candidate.y - noFly.minY <= noFly.maxY - candidate.y {
+                        candidate.y = CGFloat(ry) * (topMaxY - minY) + minY
+                    } else {
+                        candidate.y = CGFloat(ry) * (maxY - botMinY) + botMinY
+                    }
+                } else {
+                    // Push candidate toward the nearest edge of the no-fly rect
+                    let dLeft = candidate.x - noFly.minX
+                    let dRight = noFly.maxX - candidate.x
+                    let dTop = candidate.y - noFly.minY
+                    let dBottom = noFly.maxY - candidate.y
+                    let minD = min(dLeft, dRight, dTop, dBottom)
+                    if minD == dLeft { candidate.x = noFly.minX - pushDistance }
+                    else if minD == dRight { candidate.x = noFly.maxX + pushDistance }
+                    else if minD == dTop { candidate.y = noFly.minY - pushDistance }
+                    else { candidate.y = noFly.maxY + pushDistance }
+                }
                 candidate.x = min(max(candidate.x, minX), maxX)
                 candidate.y = min(max(candidate.y, minY), maxY)
             }
@@ -1264,7 +1301,7 @@ struct FriendsLeaderboardPill: View {
             }
         }
         .padding(.vertical, 8)
-        .frame(minWidth: 220)
+        .frame(width: 260)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
