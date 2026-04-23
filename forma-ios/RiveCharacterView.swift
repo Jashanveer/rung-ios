@@ -150,6 +150,7 @@ struct MentorCharacterView: View {
                     mentorName: mentorName,
                     isAI: backend.dashboard?.match?.aiMentor ?? false,
                     messages: messages,
+                    isMentorTyping: (backend.dashboard?.match?.aiMentor ?? false) && backend.aiMentorTyping,
                     messageText: $messageText,
                     currentUserId: backend.currentUserId,
                     onSend: sendMessage,
