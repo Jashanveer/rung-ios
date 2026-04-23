@@ -20,6 +20,7 @@ struct MentorCharacterView: View {
     @State private var nudgeShown = false
     @State private var nudgeDismissTask: Task<Void, Never>? = nil
     @State private var isSending = false
+    @State private var frozenChatProgress: CGFloat?
     // Keyboard height — used to lift the floating chat bubble above the
     // on-screen keyboard on iOS/iPadOS. The bubble is positioned via
     // `.position(...)`, which opts out of SwiftUI's automatic keyboard
@@ -68,13 +69,14 @@ struct MentorCharacterView: View {
 
             let charWidth = characterHeight * videoAspect
             let travelDistance = max(geo.size.width - charWidth, 0)
-            let charX = walker.positionProgress * travelDistance
+            let displayProgress = chatOpen ? (frozenChatProgress ?? walker.positionProgress) : walker.positionProgress
+            let charX = displayProgress * travelDistance
             let characterHeadX = charX + charWidth / 2
             // Tuned so the bubble sits just above the visible character head,
             // not above the frame's empty top padding.
             let visibleCharTop = characterHeight * 0.55
 
-            LoopingVideoView(videoName: "walk-bruce-01", isPlaying: walker.isWalking)
+            LoopingVideoView(videoName: "walk-bruce-01", isPlaying: walker.isWalking && !chatOpen)
                 .frame(width: charWidth, height: characterHeight)
                 .scaleEffect(x: walker.goingRight ? 1 : -1, y: 1, anchor: .center)
                 .contentShape(Rectangle())
@@ -101,14 +103,16 @@ struct MentorCharacterView: View {
                     )
             }
 
-            // Chat bubble — positioned just above the character's head.
-            // Lift further when the keyboard is up so the input isn't covered.
+            // Chat bubble — positioned just above the character's head. On
+            // iPhone it stays fixed while typing instead of chasing keyboard
+            // frame changes or the walking animation.
             if chatOpen {
                 let rawBubbleY = geo.size.height - visibleCharTop - bubbleGap - bubbleHeight / 2
-                let keyboardLift: CGFloat = keyboardHeight > 0
+                let fixedPhoneBubbleY = max(bubbleHeight / 2 + 12, min(rawBubbleY, geo.size.height * 0.36))
+                let keyboardLift: CGFloat = !narrow && keyboardHeight > 0
                     ? max(0, (bubbleHeight / 2 + 16) - (geo.size.height - keyboardHeight - rawBubbleY))
                     : 0
-                let bubbleY = rawBubbleY - keyboardLift
+                let bubbleY = narrow ? fixedPhoneBubbleY : rawBubbleY - keyboardLift
                 let bubbleCenterX = characterHeadX
                 let clampedX = clamped(bubbleCenterX, lowerBound: bubbleWidth / 2 + 8, upperBound: geo.size.width - bubbleWidth / 2 - 8)
                 let anchorX = (bubbleCenterX - (clampedX - bubbleWidth / 2)) / bubbleWidth
@@ -218,6 +222,7 @@ struct MentorCharacterView: View {
         chatAnimationTask?.cancel()
         hasUnread = false
         chatShown = false
+        frozenChatProgress = walker.positionProgress
 
         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
             chatOpen = true
@@ -260,6 +265,7 @@ struct MentorCharacterView: View {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                     chatOpen = false
                 }
+                frozenChatProgress = nil
             }
         }
     }
@@ -304,6 +310,7 @@ struct MenteeCharacterView: View {
     @State private var chatShown = false
     @State private var chatAnimationTask: Task<Void, Never>? = nil
     @State private var hasAttention = false
+    @State private var frozenChatProgress: CGFloat?
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -421,12 +428,13 @@ struct MenteeCharacterView: View {
 
             let charWidth = characterHeight * videoAspect
             let travelDistance = max(geo.size.width - charWidth, 0)
-            let charX = walker.positionProgress * travelDistance
+            let displayProgress = chatOpen ? (frozenChatProgress ?? walker.positionProgress) : walker.positionProgress
+            let charX = displayProgress * travelDistance
             let characterHeadX = charX + charWidth / 2
             let visibleCharTop = characterHeight * 0.55
 
             // Jazz — the orange lil-agent character
-            LoopingVideoView(videoName: "walk-jazz-01", isPlaying: walker.isWalking)
+            LoopingVideoView(videoName: "walk-jazz-01", isPlaying: walker.isWalking && !chatOpen)
                 .frame(width: charWidth, height: characterHeight)
                 .scaleEffect(x: walker.goingRight ? 1 : -1, y: 1, anchor: .center)
                 .contentShape(Rectangle())
@@ -452,9 +460,13 @@ struct MenteeCharacterView: View {
                     )
             }
 
-            // Chat bubble anchored above the character's head
+            // Chat bubble anchored above the character's head. On iPhone it
+            // stays fixed while open so typing does not make it drift.
             if chatOpen {
-                let bubbleY = geo.size.height - visibleCharTop - bubbleGap - bubbleHeight / 2
+                let rawBubbleY = geo.size.height - visibleCharTop - bubbleGap - bubbleHeight / 2
+                let bubbleY = narrow
+                    ? max(bubbleHeight / 2 + 12, min(rawBubbleY, geo.size.height * 0.36))
+                    : rawBubbleY
                 let clampedX = clamped(characterHeadX, lowerBound: bubbleWidth / 2 + 8, upperBound: geo.size.width - bubbleWidth / 2 - 8)
                 let anchorX = (characterHeadX - (clampedX - bubbleWidth / 2)) / bubbleWidth
                 let scaleAnchor = UnitPoint(x: clamped(anchorX, lowerBound: 0, upperBound: 1), y: 1)
@@ -501,6 +513,7 @@ struct MenteeCharacterView: View {
         chatAnimationTask?.cancel()
         hasAttention = false
         chatShown = false
+        frozenChatProgress = walker.positionProgress
         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) { chatOpen = true }
         chatAnimationTask = Task {
             await Task.yield()
@@ -519,6 +532,7 @@ struct MenteeCharacterView: View {
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) { chatOpen = false }
+                frozenChatProgress = nil
             }
         }
     }
@@ -527,4 +541,3 @@ struct MenteeCharacterView: View {
         min(max(value, lowerBound), upperBound)
     }
 }
-

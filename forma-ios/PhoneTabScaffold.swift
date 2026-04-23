@@ -148,6 +148,7 @@ struct PhoneTabScaffold: View {
                         .allowsHitTesting(true)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                         .ignoresSafeArea(.keyboard)
+                        .zIndex(20)
                 }
 
                 if showMenteeCharacter && backend.isAuthenticated {
@@ -155,6 +156,7 @@ struct PhoneTabScaffold: View {
                         .frame(maxHeight: .infinity, alignment: .bottom)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                         .ignoresSafeArea(.keyboard)
+                        .zIndex(19)
                 }
             }
             .onPreferenceChange(HabitCardFramePreferenceKey.self) { frames in
