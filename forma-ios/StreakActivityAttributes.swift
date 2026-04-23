@@ -14,12 +14,30 @@ struct StreakActivityAttributes: ActivityAttributes {
         public var totalToday: Int
         public var currentStreak: Int
         public var todayKey: String
+        /// True when today is covered by a streak freeze — the Live Activity
+        /// should surface a snowflake indicator so the user sees protection
+        /// state without opening the app. Optional for back-compat decoding.
+        public var isFrozen: Bool
 
-        public init(doneToday: Int, totalToday: Int, currentStreak: Int, todayKey: String) {
+        public init(doneToday: Int, totalToday: Int, currentStreak: Int, todayKey: String, isFrozen: Bool = false) {
             self.doneToday = doneToday
             self.totalToday = totalToday
             self.currentStreak = currentStreak
             self.todayKey = todayKey
+            self.isFrozen = isFrozen
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case doneToday, totalToday, currentStreak, todayKey, isFrozen
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            doneToday = try c.decode(Int.self, forKey: .doneToday)
+            totalToday = try c.decode(Int.self, forKey: .totalToday)
+            currentStreak = try c.decode(Int.self, forKey: .currentStreak)
+            todayKey = try c.decode(String.self, forKey: .todayKey)
+            isFrozen = try c.decodeIfPresent(Bool.self, forKey: .isFrozen) ?? false
         }
 
         public var progress: Double {

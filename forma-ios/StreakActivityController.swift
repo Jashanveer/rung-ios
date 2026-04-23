@@ -11,7 +11,14 @@ import UIKit
 /// will simply fail and we'll log nothing user-facing.
 @MainActor
 enum StreakActivityController {
-    static func start(userName: String, doneToday: Int, totalToday: Int, currentStreak: Int, todayKey: String) {
+    static func start(
+        userName: String,
+        doneToday: Int,
+        totalToday: Int,
+        currentStreak: Int,
+        todayKey: String,
+        isFrozen: Bool = false
+    ) {
         #if canImport(ActivityKit) && os(iOS)
         guard #available(iOS 16.1, *) else { return }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
@@ -22,7 +29,8 @@ enum StreakActivityController {
                 doneToday: doneToday,
                 totalToday: totalToday,
                 currentStreak: currentStreak,
-                todayKey: todayKey
+                todayKey: todayKey,
+                isFrozen: isFrozen
             )
             return
         }
@@ -31,7 +39,8 @@ enum StreakActivityController {
             doneToday: doneToday,
             totalToday: totalToday,
             currentStreak: currentStreak,
-            todayKey: todayKey
+            todayKey: todayKey,
+            isFrozen: isFrozen
         )
         do {
             _ = try Activity.request(
@@ -45,7 +54,13 @@ enum StreakActivityController {
         #endif
     }
 
-    static func update(doneToday: Int, totalToday: Int, currentStreak: Int, todayKey: String) {
+    static func update(
+        doneToday: Int,
+        totalToday: Int,
+        currentStreak: Int,
+        todayKey: String,
+        isFrozen: Bool = false
+    ) {
         #if canImport(ActivityKit) && os(iOS)
         guard #available(iOS 16.1, *) else { return }
         for activity in Activity<StreakActivityAttributes>.activities {
@@ -54,7 +69,8 @@ enum StreakActivityController {
                 doneToday: doneToday,
                 totalToday: totalToday,
                 currentStreak: currentStreak,
-                todayKey: todayKey
+                todayKey: todayKey,
+                isFrozen: isFrozen
             )
         }
         #endif
@@ -78,13 +94,15 @@ enum StreakActivityController {
         doneToday: Int,
         totalToday: Int,
         currentStreak: Int,
-        todayKey: String
+        todayKey: String,
+        isFrozen: Bool
     ) {
         let state = StreakActivityAttributes.ContentState(
             doneToday: doneToday,
             totalToday: totalToday,
             currentStreak: currentStreak,
-            todayKey: todayKey
+            todayKey: todayKey,
+            isFrozen: isFrozen
         )
         Task {
             await activity.update(.init(state: state, staleDate: nil))

@@ -98,10 +98,13 @@ struct PhoneTabScaffold: View {
         GeometryReader { geo in
             let rootFrame = geo.frame(in: .global)
             let rootSize = geo.size
-            let completedBackgroundHabits = habits.filter {
-                $0.completedDayKeys.contains(todayKey)
-                    && !stampStagingIds.contains($0.persistentModelID)
-            }
+            let isFrozenToday = backend.dashboard?.rewards.frozenDates.contains(todayKey) ?? false
+            let completedBackgroundHabits = isFrozenToday
+                ? []
+                : habits.filter {
+                    $0.completedDayKeys.contains(todayKey)
+                        && !stampStagingIds.contains($0.persistentModelID)
+                }
 
             ZStack {
                 MinimalBackground()
@@ -128,6 +131,7 @@ struct PhoneTabScaffold: View {
                     stampNamespace: stampNamespace,
                     stampStagingIds: stampStagingIds,
                     enableStampMatchedGeometry: !isRunningOnPhone,
+                    isFrozenToday: backend.dashboard?.rewards.frozenDates.contains(todayKey) ?? false,
                     onAddHabit: onAddHabit,
                     onToggleHabit: onToggleHabit,
                     onDeleteHabit: onDeleteHabit

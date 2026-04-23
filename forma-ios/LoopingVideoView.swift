@@ -6,6 +6,11 @@ import AVFoundation
 struct LoopingVideoView: NSViewRepresentable {
     let videoName: String
     let isPlaying: Bool
+    /// Seconds into the video where playback should begin when `isPlaying`
+    /// flips true. The Bruce/Jazz videos have a standing prefix; seeking past
+    /// it keeps the walk animation in sync with the walker's movement so he
+    /// doesn't slide before walking.
+    var startOffset: Double = 0
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -30,12 +35,14 @@ struct LoopingVideoView: NSViewRepresentable {
         context.coordinator.player = player
         context.coordinator.looper = looper
         context.coordinator.playerLayer = playerLayer
+        context.coordinator.startOffset = startOffset
 
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
         context.coordinator.playerLayer?.frame = nsView.bounds
+        context.coordinator.startOffset = startOffset
         context.coordinator.apply(isPlaying: isPlaying)
     }
 
@@ -46,12 +53,14 @@ struct LoopingVideoView: NSViewRepresentable {
         var looper: AVPlayerLooper?
         var playerLayer: AVPlayerLayer?
         var isPlaying: Bool = false
+        var startOffset: Double = 0
 
         func apply(isPlaying desired: Bool) {
             guard desired != isPlaying else { return }
             isPlaying = desired
             if desired {
-                player?.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak player = player] _ in
+                let time = CMTime(seconds: startOffset, preferredTimescale: 600)
+                player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak player = player] _ in
                     player?.play()
                 }
             } else {
@@ -69,6 +78,11 @@ import UIKit
 struct LoopingVideoView: UIViewRepresentable {
     let videoName: String
     let isPlaying: Bool
+    /// Seconds into the video where playback should begin when `isPlaying`
+    /// flips true. The Bruce/Jazz videos have a standing prefix; seeking past
+    /// it keeps the walk animation in sync with the walker's movement so he
+    /// doesn't slide before walking.
+    var startOffset: Double = 0
 
     func makeUIView(context: Context) -> PlayerContainerView {
         let view = PlayerContainerView()
@@ -89,11 +103,13 @@ struct LoopingVideoView: UIViewRepresentable {
 
         context.coordinator.player = player
         context.coordinator.looper = looper
+        context.coordinator.startOffset = startOffset
 
         return view
     }
 
     func updateUIView(_ view: PlayerContainerView, context: Context) {
+        context.coordinator.startOffset = startOffset
         context.coordinator.apply(isPlaying: isPlaying)
     }
 
@@ -103,6 +119,7 @@ struct LoopingVideoView: UIViewRepresentable {
         var player: AVQueuePlayer?
         var looper: AVPlayerLooper?
         var isPlaying: Bool = false
+        var startOffset: Double = 0
 
         // Only react to actual transitions. `updateUIView` fires on every
         // SwiftUI re-render (which happens ~60–120× per second while Bruce
@@ -110,12 +127,14 @@ struct LoopingVideoView: UIViewRepresentable {
         // wasteful and a source of the "Bruce slides while standing" bug:
         // the seek was issued AFTER play() and could race, starting the
         // video from a stale position. Sequencing seek → play inside the
-        // completion handler locks the video to frame 0 at each cycle.
+        // completion handler locks the video to the walking frame at each
+        // cycle start so walking animation and position stay in lockstep.
         func apply(isPlaying desired: Bool) {
             guard desired != isPlaying else { return }
             isPlaying = desired
             if desired {
-                player?.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak player = player] _ in
+                let time = CMTime(seconds: startOffset, preferredTimescale: 600)
+                player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak player = player] _ in
                     player?.play()
                 }
             } else {

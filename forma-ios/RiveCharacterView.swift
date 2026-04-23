@@ -94,7 +94,11 @@ struct MentorCharacterView: View {
                 ? max(220, min(keyboardTopLocal - 32, 560))
                 : compactBubbleHeight
 
-            LoopingVideoView(videoName: "walk-bruce-01", isPlaying: walker.isWalking && !chatOpen)
+            LoopingVideoView(
+                videoName: "walk-bruce-01",
+                isPlaying: walker.isWalking && !chatOpen,
+                startOffset: walker.videoWalkStartOffset
+            )
                 .frame(width: charWidth, height: characterHeight)
                 .scaleEffect(x: walker.goingRight ? 1 : -1, y: 1, anchor: .center)
                 .contentShape(Rectangle())
@@ -468,7 +472,11 @@ struct MenteeCharacterView: View {
             let visibleCharTop = characterHeight * 0.55
 
             // Jazz — the orange lil-agent character
-            LoopingVideoView(videoName: "walk-jazz-01", isPlaying: walker.isWalking && !chatOpen)
+            LoopingVideoView(
+                videoName: "walk-jazz-01",
+                isPlaying: walker.isWalking && !chatOpen,
+                startOffset: walker.videoWalkStartOffset
+            )
                 .frame(width: charWidth, height: characterHeight)
                 .scaleEffect(x: walker.goingRight ? 1 : -1, y: 1, anchor: .center)
                 .contentShape(Rectangle())

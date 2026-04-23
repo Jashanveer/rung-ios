@@ -13,18 +13,23 @@ class WalkerState {
     var isWalking = false
     var travelDistance: CGFloat = 500
 
-    // Video timing (from lil-agents frame analysis for Bruce).
-    // The standing buffers at both ends are padded beyond the raw frame
-    // analysis so positionProgress only changes while the video is definitely
-    // showing walking frames — absorbs the ~50–150ms latency between
-    // `AVPlayer.play()` being called and the first walking frame actually
-    // landing on screen. Without the pad, Bruce would drift sideways while
-    // his legs were still in the standing pose ("sliding while standing").
-    private let videoDuration: CFTimeInterval = 10.0
-    private let accelStart: CFTimeInterval = 3.3
-    private let fullSpeedStart: CFTimeInterval = 4.0
-    private let decelStart: CFTimeInterval = 7.8
-    private let walkStop: CFTimeInterval = 8.3
+    /// Offset into the Bruce/Jazz video where the walking frames begin — the
+    /// first ~3s of the video is a standing pose. `LoopingVideoView` seeks
+    /// here before playing so the walk animation starts on a walking frame,
+    /// not the standing prefix (which previously caused Bruce to slide
+    /// sideways for several steps before the walking animation kicked in).
+    /// Padded slightly past the raw walking-frame boundary to absorb the
+    /// ~50–150 ms latency between `AVPlayer.play()` and the first frame
+    /// actually landing on screen.
+    let videoWalkStartOffset: CFTimeInterval = 3.3
+
+    // Walk-cycle timing. The cycle is now *just* the walking phase — the
+    // video's pre/post-walk standing buffers are skipped via the seek above.
+    // That keeps sprite position and video frames in lockstep: cycle start
+    // = first walking frame, cycle end = last walking frame.
+    private let walkDuration: CFTimeInterval = 5.0
+    private let accelEnd: CFTimeInterval = 0.7
+    private let decelStart: CFTimeInterval = 4.5
 
     private var walkStartTime: CFTimeInterval = 0
     private var walkStartPos: CGFloat = 0
@@ -130,9 +135,10 @@ class WalkerState {
     private func tick() {
         let elapsed = CACurrentMediaTime() - walkStartTime
 
-        if elapsed >= videoDuration {
+        if elapsed >= walkDuration {
             stopTicking()
             positionProgress = walkEndPos
+            isWalking = false
             enterPause()
             return
         }
@@ -141,27 +147,24 @@ class WalkerState {
         positionProgress = walkStartPos + (walkEndPos - walkStartPos) * walkNorm
     }
 
-    private func movementPosition(at videoTime: CFTimeInterval) -> CGFloat {
-        let dIn = fullSpeedStart - accelStart
-        let dLin = decelStart - fullSpeedStart
-        let dOut = walkStop - decelStart
+    private func movementPosition(at t: CFTimeInterval) -> CGFloat {
+        let dIn = accelEnd
+        let dLin = decelStart - accelEnd
+        let dOut = walkDuration - decelStart
 
         let v = 1.0 / (dIn / 2.0 + dLin + dOut / 2.0)
 
-        if videoTime <= accelStart {
+        if t <= 0 {
             return 0.0
-        } else if videoTime <= fullSpeedStart {
-            let t = videoTime - accelStart
+        } else if t <= dIn {
             return CGFloat(v * t * t / (2.0 * dIn))
-        } else if videoTime <= decelStart {
-            let easeInDist = v * dIn / 2.0
-            let t = videoTime - fullSpeedStart
-            return CGFloat(easeInDist + v * t)
-        } else if videoTime <= walkStop {
+        } else if t <= decelStart {
+            return CGFloat(v * dIn / 2.0 + v * (t - dIn))
+        } else if t <= walkDuration {
             let easeInDist = v * dIn / 2.0
             let linearDist = v * dLin
-            let t = videoTime - decelStart
-            return CGFloat(easeInDist + linearDist + v * (t - t * t / (2.0 * dOut)))
+            let tt = t - decelStart
+            return CGFloat(easeInDist + linearDist + v * (tt - tt * tt / (2.0 * dOut)))
         } else {
             return 1.0
         }

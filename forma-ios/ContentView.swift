@@ -458,45 +458,32 @@ struct ContentView: View {
 
     /// Overdue tasks stay on the list and continue to block new task creation
     /// until the user finishes them. The first time a task crosses its due
-    /// date we apply a one-shot penalty: spend a streak freeze if any are
-    /// available, otherwise dock local XP. The `overduePenaltyApplied` flag on
-    /// `Habit` guarantees we never penalise the same task twice.
+    /// date we dock local XP. Streak freezes are never spent automatically —
+    /// the user must tap "Use today" in the StreakFreezeCard to protect a day.
     private func handleOverdueTasks() {
         let unpenalised = habits.filter {
             $0.entryType == .task && $0.isOverdue() && !$0.overduePenaltyApplied
         }
         guard !unpenalised.isEmpty else { return }
 
-        var freezesUsed = 0
         var xpDocked = 0
         let userId = backend.currentUserId
 
         for task in unpenalised {
             task.overduePenaltyApplied = true
             task.updatedAt = Date()
-
-            let availableFreezes = (backend.dashboard?.rewards.freezesAvailable ?? 0) - freezesUsed
-            if availableFreezes > 0 {
-                freezesUsed += 1
-                let dueKey = task.dueAt.map { DateKey.key(for: $0) } ?? todayKey
-                Task { await backend.useStreakFreeze(dateKey: dueKey) }
-            } else {
-                xpDocked += OverduePenaltyStore.xpPerOverdueTask
-                OverduePenaltyStore.add(OverduePenaltyStore.xpPerOverdueTask, for: userId)
-            }
+            xpDocked += OverduePenaltyStore.xpPerOverdueTask
+            OverduePenaltyStore.add(OverduePenaltyStore.xpPerOverdueTask, for: userId)
         }
 
         saveAndRefreshWidgets()
 
         let count = unpenalised.count
         let noun = count == 1 ? "task" : "tasks"
-        if xpDocked > 0 && freezesUsed > 0 {
-            backend.statusMessage = "\(count) overdue \(noun) — \(freezesUsed) freeze used, -\(xpDocked) XP. Finish them to unblock new tasks."
-        } else if freezesUsed > 0 {
-            backend.statusMessage = "\(count) overdue \(noun) — \(freezesUsed) streak \(freezesUsed == 1 ? "freeze" : "freezes") spent. Finish them to unblock new tasks."
-        } else {
-            backend.statusMessage = "\(count) overdue \(noun) — -\(xpDocked) XP. Finish them to unblock new tasks."
-        }
+        let freezeHint = (backend.dashboard?.rewards.freezesAvailable ?? 0) > 0
+            ? " Tap the freeze card to protect today."
+            : ""
+        backend.statusMessage = "\(count) overdue \(noun) — -\(xpDocked) XP. Finish them to unblock new tasks.\(freezeHint)"
     }
 
     // MARK: - Archive habits / delete tasks
@@ -629,9 +616,22 @@ struct ContentView: View {
     }
 
     private func refreshTimeReminders() {
+        let habitEntries = habits.filter { $0.entryType == .habit }
         timeReminderManager.refreshReminders(
-            for: habits.filter { $0.entryType == .habit },
+            for: habitEntries,
             todayKey: todayKey
+        )
+
+        let activeHabits = habitEntries.filter { !$0.isArchived }
+        let hasIncompleteHabits = activeHabits.contains { !$0.completedDayKeys.contains(todayKey) }
+        let freezes = backend.dashboard?.rewards.freezesAvailable ?? 0
+        let isFrozen = backend.dashboard?.rewards.frozenDates.contains(todayKey) ?? false
+
+        timeReminderManager.refreshStreakEndingReminder(
+            currentStreak: metrics.currentPerfectStreak,
+            hasIncompleteHabits: hasIncompleteHabits,
+            freezesAvailable: freezes,
+            isFrozenToday: isFrozen
         )
     }
 
@@ -648,13 +648,19 @@ struct ContentView: View {
     private func refreshLiveActivity() {
         #if os(iOS)
         let liveMetrics = HabitMetrics.compute(for: habits, todayKey: todayKey)
-        if liveMetrics.totalHabits > 0 && liveMetrics.doneToday < liveMetrics.totalHabits {
+        let isFrozen = backend.dashboard?.rewards.frozenDates.contains(todayKey) ?? false
+        // Keep the activity alive on a frozen day even when all habits look
+        // "done" locally — the snowflake indicator is the point of the card.
+        let shouldShow = liveMetrics.totalHabits > 0
+            && (liveMetrics.doneToday < liveMetrics.totalHabits || isFrozen)
+        if shouldShow {
             StreakActivityController.start(
                 userName: backend.dashboard?.profile.displayName ?? "",
                 doneToday: liveMetrics.doneToday,
                 totalToday: liveMetrics.totalHabits,
                 currentStreak: liveMetrics.currentPerfectStreak,
-                todayKey: todayKey
+                todayKey: todayKey,
+                isFrozen: isFrozen
             )
         } else {
             StreakActivityController.end()
