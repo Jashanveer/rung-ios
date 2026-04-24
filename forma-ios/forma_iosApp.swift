@@ -65,9 +65,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        // Wire up the delegate but don't request authorization at launch —
+        // that fires the system prompt before onboarding has a chance to
+        // explain *why* we want notifications. Onboarding's permissions
+        // step now drives the request and follows up with
+        // `registerForRemoteNotifications()` if the user grants.
         UNUserNotificationCenter.current().delegate = self
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-            guard granted else { return }
+        // For already-onboarded users who previously granted notifications,
+        // ask the system to refresh the APNs device token on every launch
+        // so a re-installed backend keeps receiving pushes.
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            guard settings.authorizationStatus == .authorized else { return }
             Task { @MainActor in
                 UIApplication.shared.registerForRemoteNotifications()
             }
@@ -123,9 +131,13 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Wire up the delegate but don't request authorization at launch —
+        // onboarding's permissions step owns the prompt so the user sees
+        // *why* before being asked. Refresh the APNs device token here
+        // for users who already granted in a prior run.
         UNUserNotificationCenter.current().delegate = self
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-            guard granted else { return }
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            guard settings.authorizationStatus == .authorized else { return }
             Task { @MainActor in
                 NSApp.registerForRemoteNotifications()
             }

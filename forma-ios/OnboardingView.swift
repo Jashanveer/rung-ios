@@ -1,4 +1,11 @@
 import SwiftUI
+import UserNotifications
+
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 private let quote = "Success is the product of daily habits — not once-in-a-lifetime transformations."
 private let quoteAttribution = "— James Clear"
@@ -21,6 +28,8 @@ struct OnboardingView: View {
     @State private var phase: OnboardingPhase = .inputHabits
     @State private var hasRequestedHealthKit = false
     @State private var healthKitRequesting = false
+    @State private var hasRequestedNotifications = false
+    @State private var notificationsRequesting = false
     #if os(iOS)
     @State private var hasRequestedScreenTime = false
     @State private var screenTimeRequesting = false
@@ -241,10 +250,10 @@ struct OnboardingView: View {
     private var permissionsSection: some View {
         VStack(spacing: 20) {
             VStack(spacing: 6) {
-                Text("One last step")
+                Text("Permissions")
                     .font(.system(size: 22, weight: .semibold, design: .rounded))
                     .multilineTextAlignment(.center)
-                Text("Forma can check your habits against Apple Health and Screen Time so nobody games the leaderboard.")
+                Text("A few system permissions so reminders, verification, and the leaderboard can do their job.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -252,10 +261,20 @@ struct OnboardingView: View {
             }
 
             permissionRow(
+                systemImage: "bell.badge.fill",
+                tint: .orange,
+                title: "Notifications",
+                subtitle: "Daily reminders, mentor nudges, and friend updates.",
+                granted: hasRequestedNotifications,
+                busy: notificationsRequesting,
+                action: requestNotifications
+            )
+
+            permissionRow(
                 systemImage: "heart.text.square.fill",
                 tint: .pink,
                 title: "Apple Health",
-                subtitle: "Verify workouts, steps, mindful minutes, sleep, and more.",
+                subtitle: "Auto-verify workouts, steps, mindful minutes, sleep, and more.",
                 granted: hasRequestedHealthKit,
                 busy: healthKitRequesting,
                 action: requestHealthKit
@@ -360,13 +379,10 @@ struct OnboardingView: View {
     }
 
     private func advanceFromInput() {
-        // Staging nothing is the "skip" path — exit straight through
-        // without pushing permissions. Anything staged means the user
-        // wants verification to work, so pause on the permissions step.
-        if stagedHabits.isEmpty {
-            beginExit()
-            return
-        }
+        // Always route through the permissions step — even users who
+        // skipped staging habits benefit from notifications, and the
+        // explicit prompts give system-level permissions context that
+        // a launch-time auto-prompt can't provide.
         fieldFocused = false
         withAnimation(.spring(response: 0.5, dampingFraction: 0.84)) {
             phase = .permissions
@@ -381,6 +397,26 @@ struct OnboardingView: View {
             await MainActor.run {
                 hasRequestedHealthKit = true
                 healthKitRequesting = false
+            }
+        }
+    }
+
+    private func requestNotifications() {
+        guard !hasRequestedNotifications, !notificationsRequesting else { return }
+        notificationsRequesting = true
+        Task {
+            let granted = (try? await UNUserNotificationCenter.current()
+                .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+            await MainActor.run {
+                if granted {
+                    #if os(iOS)
+                    UIApplication.shared.registerForRemoteNotifications()
+                    #elseif os(macOS)
+                    NSApplication.shared.registerForRemoteNotifications()
+                    #endif
+                }
+                hasRequestedNotifications = true
+                notificationsRequesting = false
             }
         }
     }
