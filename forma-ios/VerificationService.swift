@@ -139,9 +139,16 @@ actor VerificationService {
                     habitBackendId: habitBackendId, habitLocalId: habitLocalId,
                     dayKey: dayKey, tier: tier, fallback: fallback
                 )
-            case .screenTimeSocial, .selfReport:
-                // Screen Time verification is Phase 3 (iOS Family Controls).
-                // Everything else that can't be verified stays `.selfReport`.
+            case .screenTimeSocial:
+                #if os(iOS)
+                return await verifyScreenTimeSocial(
+                    habitBackendId: habitBackendId, habitLocalId: habitLocalId,
+                    dayKey: dayKey, tier: tier, fallback: fallback
+                )
+                #else
+                return fallback
+                #endif
+            case .selfReport:
                 return fallback
             }
         } catch {
@@ -305,6 +312,35 @@ actor VerificationService {
             evidenceJSON: Self.encode(["drinks": 0])
         )
     }
+
+    #if os(iOS)
+    /// Awards the canonical tier when ScreenTime monitoring is active and
+    /// the user did not cross the daily threshold for `dayKey`. Anything
+    /// else — monitoring off, no app selection, threshold exceeded — falls
+    /// back to `.selfReport` because we can't honestly verify abstinence.
+    /// Reading `ScreenTimeService` requires hopping to the main actor so
+    /// the flag write/read pair stays serialized with the picker UI.
+    private func verifyScreenTimeSocial(
+        habitBackendId: Int64?, habitLocalId: UUID, dayKey: String,
+        tier: VerificationTier, fallback: HabitCompletion
+    ) async -> HabitCompletion {
+        let (isMonitoring, overLimit) = await MainActor.run {
+            (
+                ScreenTimeService.shared.isMonitoring,
+                ScreenTimeService.shared.wasOverLimit(on: dayKey)
+            )
+        }
+        guard isMonitoring, !overLimit else { return fallback }
+        return HabitCompletion(
+            habitBackendId: habitBackendId,
+            habitLocalId: habitLocalId,
+            dayKey: dayKey,
+            verifiedBySource: .screenTimeSocial,
+            awardedTier: tier,
+            evidenceJSON: Self.encode(["underLimit": true])
+        )
+    }
+    #endif
 
     // MARK: - HealthKit bridging
 

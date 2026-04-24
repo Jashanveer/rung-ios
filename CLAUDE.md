@@ -34,21 +34,33 @@ the full description.
 
 **iOS-specific pieces**:
 
-- `com.apple.developer.family-controls` entitlement enabled in
-  `forma-ios.entitlements`
-- `ScreenTimeService.swift` (iOS-only via `#if os(iOS)`) — authorization
-  wrapper for Family Controls. `DeviceActivityMonitor` extension target
-  is **not yet added** — needs manual Xcode surgery
-- Onboarding's permissions step surfaces a Screen Time row alongside the
-  Apple Health row; `VerificationService` falls through to self-report
-  for `.screenTimeSocial` until the monitor extension ships
+- `com.apple.developer.family-controls` entitlement enabled on both the
+  main `forma-ios` target (`forma-ios.entitlements`) and the
+  `ScreenTimeMonitor` extension target (`ScreenTimeMonitor.entitlements`)
+- App Group `group.jashanveer.habit-tracker-macos` shared between both
+  targets — the only memory bridge between the extension process and the
+  main app
+- `ScreenTimeService.swift` (iOS-only via `#if os(iOS)`) — authorization,
+  selection persistence, and `DeviceActivityCenter` schedule lifecycle.
+  `wasOverLimit(on:)` reads the App Group flag the extension writes.
+- `ScreenTimeMonitor/DeviceActivityMonitorExtension.swift` — runs in a
+  separate process, writes per-day overLimit flags into the shared
+  `UserDefaults(suiteName:)` on `eventDidReachThreshold`. Keep the
+  hardcoded `kAppGroupID` / activity / event names in sync with
+  `ScreenTimeService`'s constants.
+- `SocialAppsPickerSheet.swift` — wraps Apple's `FamilyActivityPicker`,
+  presented automatically from `AddHabitBar` after the user creates a
+  habit with the canonical `screenTime` key.
+- `VerificationService.verifyScreenTimeSocial(...)` reads
+  `ScreenTimeService.wasOverLimit(on:)` and awards `.auto` only when the
+  user stayed under the threshold AND monitoring is active.
 
-**Phase 3 manual follow-up** — to actually count social-media minutes
-for the `.screenTimeSocial` verification source, add a new
-DeviceActivityMonitor extension target in Xcode (File → New → Target →
-Device Activity Monitor Extension), then wire it to post usage events
-back to the main app via App Groups. `ScreenTimeService` already holds
-the authorization state the extension will need.
+**Phase 3 distribution gate** — `Family Controls (Distribution)` is a
+separate entitlement Apple grants by hand on request via
+https://developer.apple.com/contact/request/family-controls-distribution.
+Required to ship the feature on the App Store or to external TestFlight
+testers. Internal testing on the developer's own device works the
+moment the paid Apple Developer team is selected.
 
 ## Code Style
 
