@@ -443,6 +443,11 @@ struct ContentView: View {
                 habit.pendingCheckDayKey = nil   // operation confirmed — safe to reconcile
                 habit.syncStatus = .synced
                 saveAndRefreshWidgets()
+                // Only verify on the done→true transition; unchecking never
+                // deserves credit, and sync-replay callers skip this method.
+                if wasUnchecked {
+                    Task { await backend.verifyCompletion(habit: habit, dayKey: todayKey, modelContext: modelContext) }
+                }
                 await backend.refreshDashboard()
             } catch {
                 // Keep pendingCheckDayKey set so flushOutbox can retry the exact operation

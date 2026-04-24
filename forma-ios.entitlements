@@ -6,5 +6,9 @@
     <array>
         <string>group.jashanveer.habit-tracker-macos</string>
     </array>
+    <key>com.apple.developer.healthkit</key>
+    <true/>
+    <key>com.apple.developer.family-controls</key>
+    <true/>
 </dict>
 </plist>

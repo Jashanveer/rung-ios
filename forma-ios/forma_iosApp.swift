@@ -17,7 +17,7 @@ struct FormaIosApp: App {
     #endif
 
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema([Habit.self])
+        let schema = Schema([Habit.self, HabitCompletion.self])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
         if let container = try? ModelContainer(for: schema, configurations: [config]) {

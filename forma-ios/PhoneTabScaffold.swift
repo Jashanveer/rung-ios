@@ -101,9 +101,15 @@ struct PhoneTabScaffold: View {
             let isFrozenToday = backend.dashboard?.rewards.frozenDates.contains(todayKey) ?? false
             let completedBackgroundHabits = isFrozenToday
                 ? []
-                : habits.filter {
-                    $0.completedDayKeys.contains(todayKey)
-                        && !stampStagingIds.contains($0.persistentModelID)
+                : habits.filter { habit in
+                    guard !stampStagingIds.contains(habit.persistentModelID) else { return false }
+                    // Weekly-target habits surface as stamps for the
+                    // remainder of the week once their target is met —
+                    // today-specific completion is not required.
+                    if habit.isFrequencyBased {
+                        return habit.weeklyTargetReached(containing: DateKey.date(from: todayKey))
+                    }
+                    return habit.completedDayKeys.contains(todayKey)
                 }
 
             ZStack {
