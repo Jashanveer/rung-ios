@@ -28,7 +28,7 @@ struct PhoneTabScaffold: View {
     let stampNamespace: Namespace.ID
     let stampStagingIds: Set<PersistentIdentifier>
 
-    let onAddHabit: (HabitEntryType, Date?) -> Void
+    let onAddHabit: (HabitEntryType, Date?, CanonicalHabit?, Int?) -> Void
     let onToggleHabit: (Habit) -> Void
     let onDeleteHabit: (Habit) -> Void
     let onSync: () -> Void
