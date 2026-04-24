@@ -43,6 +43,13 @@ the full description.
   Apple Health row; `VerificationService` falls through to self-report
   for `.screenTimeSocial` until the monitor extension ships
 
+**Phase 3 manual follow-up** — to actually count social-media minutes
+for the `.screenTimeSocial` verification source, add a new
+DeviceActivityMonitor extension target in Xcode (File → New → Target →
+Device Activity Monitor Extension), then wire it to post usage events
+back to the main app via App Groups. `ScreenTimeService` already holds
+the authorization state the extension will need.
+
 ## Code Style
 
 - 4-space indentation, PascalCase types, camelCase properties/methods
