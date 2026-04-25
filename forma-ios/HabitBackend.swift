@@ -422,6 +422,15 @@ final class HabitBackendStore: ObservableObject {
         deviceRepository          = DeviceRepository(client: client)
         preferencesRepository     = PreferencesRepository(client: client)
 
+        // Cold launch with a previously-saved session: open the per-user
+        // SSE stream so cross-device sync works on app relaunches, not
+        // just on fresh sign-ins. Without this the stream only ran on
+        // the very first login per install — every relaunch silently
+        // skipped the SSE setup, breaking the live-update path.
+        if session != nil {
+            startUserStream()
+        }
+
         isOnline = networkMonitor.isOnline
         networkCancellable = networkMonitor.$isOnline
             .receive(on: DispatchQueue.main)
@@ -1232,12 +1241,17 @@ final class HabitBackendStore: ObservableObject {
                 )
                 let (bytes, response) = try await URLSession.shared.bytes(for: request)
                 guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                    let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+                    print("[UserStream] connect failed — status \(code)")
                     throw HabitBackendError.invalidResponse
                 }
+                print("[UserStream] connected")
                 backoffSeconds = 1
                 try await consumeUserStreamLines(lines: bytes.lines)
+                print("[UserStream] disconnected (peer closed)")
             } catch {
                 if Task.isCancelled { return }
+                print("[UserStream] error: \(error.localizedDescription) — retrying in \(Int(backoffSeconds))s")
                 try? await Task.sleep(for: .seconds(backoffSeconds))
                 backoffSeconds = min(backoffSeconds * 2, 30)
             }
@@ -1270,12 +1284,13 @@ final class HabitBackendStore: ObservableObject {
         if let id = id, !id.isEmpty { lastUserStreamEventID = id }
         switch name {
         case "habits.changed":
+            print("[UserStream] habits.changed — triggering sync")
             // Broadcast — ContentView owns the sync trigger.
             NotificationCenter.default.post(name: .habitsChangedSSE, object: nil)
         case "ping", "stream.ready":
             break
         default:
-            break
+            print("[UserStream] unknown event '\(name)'")
         }
     }
 
