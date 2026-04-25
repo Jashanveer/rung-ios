@@ -30,6 +30,7 @@ struct OnboardingView: View {
     @State private var healthKitRequesting = false
     @State private var hasRequestedNotifications = false
     @State private var notificationsRequesting = false
+    @State private var showVerificationHelp = false
     #if os(iOS)
     @State private var hasRequestedScreenTime = false
     @State private var screenTimeRequesting = false
@@ -309,10 +310,27 @@ struct OnboardingView: View {
             }
             .buttonStyle(.plain)
             .disabled(isExiting)
+
+            Button {
+                showVerificationHelp = true
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("How does verification work?")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .foregroundStyle(CleanShotTheme.accent)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
         }
         .opacity(inputVisible ? 1 : 0)
         .offset(y: inputVisible ? 0 : 14)
         .animation(.spring(response: 0.55, dampingFraction: 0.84), value: inputVisible)
+        .sheet(isPresented: $showVerificationHelp) {
+            VerificationHelpSheet()
+        }
     }
 
     /// A single permission affordance — icon + copy + an action button that
