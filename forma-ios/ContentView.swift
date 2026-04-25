@@ -140,6 +140,13 @@ struct ContentView: View {
             guard let message = note.object as? String else { return }
             mentorNudge = message
         }
+        .onReceive(NotificationCenter.default.publisher(for: .habitsChangedSSE)) { _ in
+            // Another device just wrote a habit — run the normal sync
+            // pass so the local SwiftData store converges in seconds
+            // instead of waiting on the 5-minute timer.
+            guard backend.isAuthenticated else { return }
+            syncWithBackend()
+        }
     }
 
     // MARK: - Add habit

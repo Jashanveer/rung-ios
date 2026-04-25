@@ -380,6 +380,12 @@ final class HabitBackendStore: ObservableObject {
     private var streamTask: Task<Void, Never>?
     private var streamingMatchID: Int64?
     private var lastStreamEventID: String?
+    /// Long-lived per-user SSE task. Connects on authentication,
+    /// reconnects with exponential backoff on disconnect, and posts
+    /// `.habitsChangedSSE` whenever the server publishes that another
+    /// device mutated a habit so ContentView can trigger sync in seconds.
+    private var userStreamTask: Task<Void, Never>?
+    private var lastUserStreamEventID: String?
     private var lastSentMessageAt: Date?
     private var lastSentMessageText: String?
     private let networkMonitor = NetworkMonitor()
@@ -593,6 +599,7 @@ final class HabitBackendStore: ObservableObject {
 
     func signOut() {
         stopStream()
+        stopUserStream()
         clearSession()
         Task {
             await apiClient.logout()
@@ -1186,6 +1193,75 @@ final class HabitBackendStore: ObservableObject {
         refreshSyncingState()
     }
 
+    // MARK: - Per-user SSE (cross-device real-time sync)
+
+    private func startUserStream() {
+        if userStreamTask != nil { return }
+        userStreamTask = Task { [weak self] in await self?.runUserStreamLoop() }
+    }
+
+    private func stopUserStream() {
+        userStreamTask?.cancel()
+        userStreamTask = nil
+        lastUserStreamEventID = nil
+    }
+
+    private func runUserStreamLoop() async {
+        var backoffSeconds: TimeInterval = 1
+        while !Task.isCancelled, isAuthenticated {
+            do {
+                let request = try await accountabilityRepository.userStreamRequest(
+                    lastEventID: lastUserStreamEventID
+                )
+                let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                    throw HabitBackendError.invalidResponse
+                }
+                backoffSeconds = 1
+                try await consumeUserStreamLines(lines: bytes.lines)
+            } catch {
+                if Task.isCancelled { return }
+                try? await Task.sleep(for: .seconds(backoffSeconds))
+                backoffSeconds = min(backoffSeconds * 2, 30)
+            }
+        }
+    }
+
+    private func consumeUserStreamLines<S: AsyncSequence>(lines: S) async throws where S.Element == String {
+        var eventName = "message"
+        var eventID: String?
+        var dataLines: [String] = []
+
+        for try await raw in lines {
+            if Task.isCancelled { return }
+            if raw.isEmpty {
+                // Blank line = event boundary.
+                let payload = dataLines.joined(separator: "\n")
+                if !payload.isEmpty {
+                    handleUserStreamEvent(name: eventName, id: eventID, payload: payload)
+                }
+                eventName = "message"; eventID = nil; dataLines.removeAll(keepingCapacity: true)
+                continue
+            }
+            if raw.hasPrefix("event:") { eventName = raw.dropFirst(6).trimmingCharacters(in: .whitespaces); continue }
+            if raw.hasPrefix("id:")    { eventID   = raw.dropFirst(3).trimmingCharacters(in: .whitespaces); continue }
+            if raw.hasPrefix("data:")  { dataLines.append(String(raw.dropFirst(5)).trimmingCharacters(in: .whitespaces)) }
+        }
+    }
+
+    private func handleUserStreamEvent(name: String, id: String?, payload: String) {
+        if let id = id, !id.isEmpty { lastUserStreamEventID = id }
+        switch name {
+        case "habits.changed":
+            // Broadcast — ContentView owns the sync trigger.
+            NotificationCenter.default.post(name: .habitsChangedSSE, object: nil)
+        case "ping", "stream.ready":
+            break
+        default:
+            break
+        }
+    }
+
     private func runStreamLoop(matchID: Int64) async {
         var hadSuccessfulConnection = false
         var backoffSeconds: TimeInterval = 1
@@ -1323,6 +1399,10 @@ final class HabitBackendStore: ObservableObject {
     private func applySession(_ session: BackendSession) {
         token = session.accessToken
         KeychainSessionStore.save(session)
+        // Open the per-user SSE stream so cross-device habit writes
+        // flow to us in seconds instead of on the next 5-min timer.
+        // Idempotent — skipped if a stream is already running.
+        startUserStream()
     }
 
     private func syncSessionFromClient() async {

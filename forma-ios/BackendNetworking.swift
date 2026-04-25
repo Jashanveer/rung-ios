@@ -827,6 +827,17 @@ struct AccountabilityRepository {
         )
     }
 
+    /// Per-user SSE stream used for cross-device real-time habit sync.
+    /// The backend publishes `habits.changed` every time this user writes
+    /// a habit on any device; subscribers respond by re-running their
+    /// normal sync pass so state converges across devices in seconds.
+    func userStreamRequest(lastEventID: String?) async throws -> URLRequest {
+        try await client.authorizedSSERequest(
+            path: "/api/me/stream",
+            lastEventID: lastEventID
+        )
+    }
+
     func markMatchRead(matchId: Int64) async throws {
         let _: EmptyResponse = try await client.authorizedRequest(
             path: "/api/accountability/matches/\(matchId)/read", method: "POST"

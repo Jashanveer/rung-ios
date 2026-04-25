@@ -198,4 +198,8 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 extension Notification.Name {
     static let apnsTokenReceived = Notification.Name("apnsTokenReceived")
     static let apnsNudgeReceived = Notification.Name("apnsNudgeReceived")
+    /// Fired when the per-user SSE stream reports another device just
+    /// wrote a habit — ContentView reacts by triggering syncWithBackend
+    /// so the change lands within seconds instead of on the next timer.
+    static let habitsChangedSSE = Notification.Name("habitsChangedSSE")
 }
