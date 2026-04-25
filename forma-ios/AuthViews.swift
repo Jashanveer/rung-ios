@@ -538,6 +538,11 @@ struct AuthGateView: View {
 
                 Spacer()
 
+                // Apple-only sign-in surfaces no Sign Up tab — the
+                // email/verification step machine + backend endpoints
+                // are intentionally kept intact in case we ever want
+                // to flip this back on, but the toggle is hidden.
+                if false {
                 Button {
                     withAnimation(.smooth(duration: 0.24)) {
                         step = (step == .signIn) ? .signUp : .signIn
@@ -564,6 +569,7 @@ struct AuthGateView: View {
                     )
                 }
                 .buttonStyle(.plain)
+                } // end if false
             }
         }
     }
@@ -571,22 +577,24 @@ struct AuthGateView: View {
     // MARK: Sign In
 
     private var signInContent: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Welcome back.")
+        VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Welcome to Forma.")
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text("Sign in to continue your streak.")
+                Text("One-tap sign in or sign up with Apple — Hide My Email is supported.")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
-            // Apple-first: prominent SignInWithAppleButton sits at the
-            // top of the form so it reads as the recommended path. The
-            // shadow + slightly taller frame nudge users toward the
-            // one-tap option vs the manual email login below.
+            // Apple-only sign-in. Email/password code paths in
+            // BackendAPIClient + AuthService stay intact for future use,
+            // but the UI surfaces only the one-tap Apple flow per the
+            // product decision to avoid the password-recovery / email-
+            // verification surface area entirely.
             SignInWithAppleButton(
                 .signIn,
                 onRequest: { request in
@@ -605,47 +613,14 @@ struct AuthGateView: View {
             )
             .disabled(backend.isSyncing)
 
-            HStack(spacing: 10) {
-                authDivider
-                Text("or use email")
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .textCase(.uppercase)
-                    .kerning(0.5)
-                authDivider
-            }
-            .padding(.vertical, 4)
-
-            VStack(spacing: 12) {
-                AuthTextField(placeholder: "Username", text: $username, isSecure: false, colorScheme: colorScheme, autoFocus: true)
-                AuthTextField(placeholder: "Password", text: $password, isSecure: true, colorScheme: colorScheme)
-            }
-
             messageBanner
 
-            AuthPrimaryButton(title: "Sign in", isLoading: backend.isSyncing, action: performSignIn)
-
-            VStack(spacing: 10) {
-                HStack(spacing: 6) {
-                    Text("New here?")
-                        .foregroundStyle(.secondary)
-                    Button {
-                        withAnimation(.smooth(duration: 0.24)) { step = .signUp }
-                    } label: {
-                        Text("Create an account")
-                            .foregroundStyle(CleanShotTheme.accent)
-                            .fontWeight(.semibold)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .font(.system(size: 14, weight: .medium, design: .rounded))
-
-                Text("Forgot password?")
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.top, 4)
+            Text("By continuing you agree to our Terms & Privacy.")
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 4)
         }
     }
 
