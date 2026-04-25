@@ -583,23 +583,10 @@ struct AuthGateView: View {
                     .foregroundStyle(.secondary)
             }
 
-            VStack(spacing: 12) {
-                AuthTextField(placeholder: "Username", text: $username, isSecure: false, colorScheme: colorScheme, autoFocus: true)
-                AuthTextField(placeholder: "Password", text: $password, isSecure: true, colorScheme: colorScheme)
-            }
-
-            messageBanner
-
-            AuthPrimaryButton(title: "Sign in", isLoading: backend.isSyncing, action: performSignIn)
-
-            HStack(spacing: 10) {
-                authDivider
-                Text("OR")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                authDivider
-            }
-
+            // Apple-first: prominent SignInWithAppleButton sits at the
+            // top of the form so it reads as the recommended path. The
+            // shadow + slightly taller frame nudge users toward the
+            // one-tap option vs the manual email login below.
             SignInWithAppleButton(
                 .signIn,
                 onRequest: { request in
@@ -610,9 +597,33 @@ struct AuthGateView: View {
                 }
             )
             .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
-            .frame(height: 52)
+            .frame(height: 56)
             .clipShape(Capsule(style: .continuous))
+            .shadow(
+                color: Color.black.opacity(colorScheme == .dark ? 0.5 : 0.18),
+                radius: 14, y: 6
+            )
             .disabled(backend.isSyncing)
+
+            HStack(spacing: 10) {
+                authDivider
+                Text("or use email")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .textCase(.uppercase)
+                    .kerning(0.5)
+                authDivider
+            }
+            .padding(.vertical, 4)
+
+            VStack(spacing: 12) {
+                AuthTextField(placeholder: "Username", text: $username, isSecure: false, colorScheme: colorScheme, autoFocus: true)
+                AuthTextField(placeholder: "Password", text: $password, isSecure: true, colorScheme: colorScheme)
+            }
+
+            messageBanner
+
+            AuthPrimaryButton(title: "Sign in", isLoading: backend.isSyncing, action: performSignIn)
 
             VStack(spacing: 10) {
                 HStack(spacing: 6) {
