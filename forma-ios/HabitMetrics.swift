@@ -280,11 +280,17 @@ struct HabitMetrics {
 
         let completedDates = habit.completedDayKeys.map { calendar.startOfDay(for: DateKey.date(from: $0)) }
         if let firstCompletedDate = completedDates.min() {
+            // Completed task — active only up to and including the day it
+            // was checked off. Subsequent days don't get penalised.
             return firstCompletedDate >= day
         }
-        // Uncompleted task: active only today and forward — not on historical days
-        // so open tasks don't retroactively block past perfect days.
-        return day >= calendar.startOfDay(for: Date())
+        // Uncompleted task — active from its createdAt onward (the
+        // `createdAt <= day` guard above already ruled out days before
+        // the task existed). Previously this branch keyed off `Date()`
+        // which silently drifted the "active window" with wall-clock
+        // time, causing past perfect-day calculations to change between
+        // sessions even when the underlying data was identical.
+        return true
     }
 
     private static func achievementMedals(for habits: [Habit], perfectDays: [String], totalChecks: Int, bestPerfectStreak: Int) -> [Medal] {

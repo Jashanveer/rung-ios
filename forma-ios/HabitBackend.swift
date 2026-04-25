@@ -525,13 +525,30 @@ final class HabitBackendStore: ObservableObject {
     }
 
     /// Submits the user's chosen username + avatar to the backend after
-    /// a fresh Apple sign-up. Clears `requiresProfileSetup` on success so
-    /// the UI can hand off to the regular onboarding flow.
+    /// a fresh Apple sign-up. Clears `requiresProfileSetup` on success
+    /// so the UI can hand off to the regular onboarding flow.
+    ///
+    /// Error shape matters here — the backend may *succeed* on write but
+    /// the client may fail to decode the response (e.g. a Jackson schema
+    /// drift). In that case we'd soft-lock the user on the setup screen
+    /// despite the profile being persisted. To avoid the loop, we
+    /// inspect the error: `invalidResponse` means the server likely
+    /// committed; every other case (network, 4xx with recognizable
+    /// message) leaves the flag set so the user can retry.
     func setupAppleProfile(username: String, avatarURL: String) async -> Bool {
         authRequestState = .loading; refreshSyncingState()
         defer { refreshSyncingState() }
         do {
             try await authRepository.setupProfile(username: username, avatarURL: avatarURL)
+            requiresProfileSetup = false
+            errorMessage = nil
+            authRequestState = .success(())
+            return true
+        } catch HabitBackendError.invalidResponse {
+            // Server likely accepted the write but we couldn't decode
+            // the response payload. Clear the flag so the user isn't
+            // stuck; any actual server-side failure would have come
+            // through as a typed 4xx with a readable message instead.
             requiresProfileSetup = false
             errorMessage = nil
             authRequestState = .success(())

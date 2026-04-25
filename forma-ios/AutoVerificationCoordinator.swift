@@ -230,9 +230,17 @@ final class AutoVerificationCoordinator {
 
             // Ask HealthKit to relaunch the app whenever new data arrives.
             // `.immediate` is the most aggressive cadence; HK still batches
-            // and throttles in practice. Failures are silent — typically
-            // means the user hasn't authorized this type yet.
-            store.enableBackgroundDelivery(for: type, frequency: .immediate) { _, _ in }
+            // and throttles in practice. We surface failures to the log so
+            // misconfigurations (denied auth, low-power-mode quirks,
+            // missing entitlement) are visible during debugging instead of
+            // silently shipping an app that looks wired but isn't.
+            store.enableBackgroundDelivery(for: type, frequency: .immediate) { success, error in
+                if let error = error {
+                    print("[AutoVerify] Background delivery failed for \(type.identifier): \(error.localizedDescription)")
+                } else if !success {
+                    print("[AutoVerify] Background delivery returned success=false for \(type.identifier)")
+                }
+            }
         }
     }
 
