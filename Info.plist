@@ -2,6 +2,20 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!--
+	  ⚠️  PRODUCTION CHECKLIST — read before App Store submission ⚠️
+
+	  1. BackendBaseURL: replace the LAN dev IP below with your prod HTTPS
+	     URL (e.g. https://api.forma.app). The current 192.168.x.x value
+	     only works on the developer's home network.
+	  2. NSAppTransportSecurity: delete the entire <key>NSAppTransportSecurity</key>
+	     block. It exists ONLY so http://192.168.1.217 works during dev. Once
+	     BackendBaseURL is HTTPS this exception is both unnecessary and a
+	     red flag for App Review.
+	  3. ITSAppUsesNonExemptEncryption stays `false` because the app uses
+	     only standard TLS (no proprietary crypto) — re-evaluate if you add
+	     a custom cipher.
+	-->
 	<key>BackendBaseURL</key>
 	<string>http://192.168.1.217:8080</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
@@ -10,8 +24,15 @@
 	<string>Forma uses Apple Health data to verify your habits and award accurate leaderboard points.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Forma can log workouts and mindfulness minutes back to Apple Health.</string>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>Forma sends habit reminders, streak warnings, and accountability nudges from your mentor.</string>
+	<key>NSFamilyControlsUsageDescription</key>
+	<string>Forma uses Screen Time limits to verify your social-media-detox habits without tracking what you do in those apps.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
+		<!-- DEV ONLY — delete before App Store submission. -->
 		<key>NSExceptionDomains</key>
 		<dict>
 			<key>192.168.1.217</key>

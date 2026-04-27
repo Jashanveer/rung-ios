@@ -10,10 +10,7 @@ struct ContentView: View {
     @StateObject private var backend = HabitBackendStore()
     @StateObject private var timeReminderManager = TimeReminderManager()
 
-    // Default `true` so returning sign-ins skip the onboarding overview.
-    // Flipped to `false` only when `backend.justRegistered` fires from a fresh
-    // account creation.
-    @State private var hasCompletedOnboarding = true
+    @State private var hasCompletedOnboarding = false
     @State private var newHabitTitle = ""
     @State private var newEntryType: HabitEntryType = .task
     @State private var progressOpen = false
@@ -25,9 +22,23 @@ struct ContentView: View {
     /// the 7-day dot row can fill in place before the card morphs into a
     /// background stamp via matched geometry.
     @State private var stampStagingIds: Set<PersistentIdentifier> = []
+    /// Local habits whose initial create Task is currently in flight from
+    /// `addHabit`. flushOutbox skips these so it doesn't race the in-flight
+    /// create and produce a duplicate server-side row (which would surface as
+    /// two cards / two completion-dot strips for the same title).
+    @State private var inFlightUploads: Set<PersistentIdentifier> = []
+    /// Re-entrancy guard for `syncWithBackend`. Multiple triggers can fire it
+    /// concurrently (10s timer, SSE event, online-restored handler, .task on
+    /// appear) and concurrent flushOutbox passes will both pick up the same
+    /// pendingCreates, double-uploading every queued habit. Single-flight here.
+    @State private var isSyncing = false
     @Namespace private var stampNamespace
 
     private var showOnboarding: Bool { backend.isAuthenticated && !hasCompletedOnboarding }
+
+    private var onboardingKey: String {
+        "onboarded_\(backend.currentUserId ?? "anon")"
+    }
 
     private static let nudgeMessages = [
         "Well done! 💪", "Keep it up!", "That's the way!", "Proud of you!",
@@ -38,23 +49,26 @@ struct ContentView: View {
     private var todayKey: String { DateKey.key(for: Date()) }
     private var metrics: HabitMetrics { HabitMetrics.compute(for: habits, todayKey: todayKey) }
 
-    // AI mentor is always visible once the user is signed in — no preview
-    // toggle and no 7-day gate. The auto-matching flow has been retired (see
-    // task: unlock mentor as AI default).
-    // AI mentor is always on once the user is signed in — but only on the
-    // dashboard. The onboarding overlay covers the dashboard, so suppress
-    // Bruce while it's up so he doesn't peek out from behind the cover.
-    private var showMentorCharacter: Bool {
-        backend.isAuthenticated && !showOnboarding
+    /// True only when the main dashboard is the foreground view — no overlay
+    /// panels (progress / settings / calendar / onboarding) are covering it.
+    /// Bruce and the rival mentee live strictly on this dashboard so they
+    /// don't peek out from behind the side panels or calendar sheet.
+    private var isDashboardForeground: Bool {
+        !showOnboarding && !progressOpen && !settingsOpen && !calendarOpen
     }
 
-    // Mentee slot shows a top-leaderboard friend. Visible when the user has
-    // at least one friend who appears on the leaderboard. `friendCount` is a
-    // cheap proxy — the RiveCharacterView downstream picks the actual
-    // leaderboard entry to display, and renders nothing when the pool is empty.
-    // Same onboarding gate as Bruce so the orange character stays hidden too.
+    // AI mentor is always on once the user is signed in — but only on the
+    // dashboard. Any overlay (onboarding, stats sidebar, settings, calendar)
+    // suppresses Bruce so he doesn't peek out from behind the cover.
+    private var showMentorCharacter: Bool {
+        backend.isAuthenticated && isDashboardForeground
+    }
+
+    // Mentee slot surfaces a top-leaderboard friend — only shown when the
+    // user has at least one friend on the leaderboard. Same dashboard-only
+    // gate as Bruce so the orange character doesn't appear over any panel.
     private var showMenteeCharacter: Bool {
-        guard backend.isAuthenticated, !showOnboarding else { return false }
+        guard backend.isAuthenticated, isDashboardForeground else { return false }
         let friendCount = backend.dashboard?.social?.friendCount ?? 0
         let leaderboard = backend.dashboard?.weeklyChallenge.leaderboard ?? []
         return friendCount > 0 && !leaderboard.isEmpty
@@ -87,9 +101,7 @@ struct ContentView: View {
             onCompleteOnboarding: completeOnboarding
         )
         .onChange(of: backend.isAuthenticated) { _, isAuth in
-            // Returning sign-ins always skip onboarding. A fresh registration
-            // flips `justRegistered` (handled below) which re-opens it once.
-            if !isAuth { hasCompletedOnboarding = true }
+            hasCompletedOnboarding = isAuth ? resolveOnboardingState() : false
         }
         .onChange(of: backend.isOnline) { wasOnline, isOnline in
             // Connectivity restored — flush any offline edits to the server.
@@ -100,10 +112,17 @@ struct ContentView: View {
         }
         .onChange(of: backend.justRegistered) { _, isNew in
             guard isNew else { return }
+            // Fresh registration — force the James Clear overview to appear once,
+            // overriding any stale onboarded_<userId> UserDefaults key left from
+            // a prior dev database reset or a re-registered deleted account.
+            UserDefaults.standard.removeObject(forKey: onboardingKey)
             hasCompletedOnboarding = false
             backend.justRegistered = false
         }
         .onAppear {
+            if backend.isAuthenticated {
+                hasCompletedOnboarding = resolveOnboardingState()
+            }
             refreshTimeReminders()
             // Wire the auto-verifier up once and start its HK observers
             // so verifiable habits can flip to done as soon as Apple
@@ -127,6 +146,17 @@ struct ContentView: View {
             refreshTimeReminders()
             handleOverdueTasks()
         }
+        // Polling safety-net for cross-device sync. SSE is the fast
+        // path (`.habitsChangedSSE` above) but it can briefly stall
+        // (URLSession SSE buffering, network blips, server restarts)
+        // and we'd rather pay a tiny periodic GET than leave the user
+        // staring at a stale list. Ten seconds is the worst-case lag
+        // the user will perceive when SSE is broken; with SSE healthy
+        // the same data has already arrived in ~1s.
+        .onReceive(Timer.publish(every: 10, on: .main, in: .common).autoconnect()) { _ in
+            guard backend.isAuthenticated else { return }
+            syncWithBackend()
+        }
         .animation(.smooth(duration: 0.2), value: colorScheme)
         .task {
             guard backend.isAuthenticated else { return }
@@ -141,9 +171,7 @@ struct ContentView: View {
             mentorNudge = message
         }
         .onReceive(NotificationCenter.default.publisher(for: .habitsChangedSSE)) { _ in
-            // Another device just wrote a habit — run the normal sync
-            // pass so the local SwiftData store converges in seconds
-            // instead of waiting on the 5-minute timer.
+            print("[ContentView] .habitsChangedSSE received auth=\(backend.isAuthenticated)")
             guard backend.isAuthenticated else { return }
             syncWithBackend()
         }
@@ -199,7 +227,19 @@ struct ContentView: View {
         newHabitTitle = ""
         saveAndRefreshWidgets()
 
+        // Mark this habit as having an in-flight create so any concurrent
+        // flushOutbox pass skips it. Without this guard, the 10s sync timer
+        // (or an SSE event) firing while createHabit is awaiting the network
+        // would call createHabit a second time, producing duplicate rows.
+        let habitID = localHabit.persistentModelID
+        inFlightUploads.insert(habitID)
+
         Task {
+            defer {
+                Task { @MainActor in
+                    inFlightUploads.remove(habitID)
+                }
+            }
             do {
                 let remoteHabit: BackendHabit
                 switch entryType {
@@ -236,8 +276,17 @@ struct ContentView: View {
 
     private func syncWithBackend() {
         guard backend.isAuthenticated else { return }
+        guard !isSyncing else {
+            print("[Sync] skip — another sync is already in flight")
+            return
+        }
+        print("[Sync] syncWithBackend start localHabits=\(habits.count)")
+        isSyncing = true
 
         Task {
+            defer {
+                Task { @MainActor in isSyncing = false }
+            }
             do {
                 try await flushOutbox()
                 async let habitsResponse = backend.listHabits()
@@ -245,7 +294,10 @@ struct ContentView: View {
                 let remoteHabits = try await habitsResponse
                 let remoteTasks = try await tasksResponse
                 let remote = remoteHabits + remoteTasks
-                applyReconcile(SyncEngine.reconcile(local: habits, remote: remote))
+                print("[Sync] fetched remoteHabits=\(remoteHabits.count) remoteTasks=\(remoteTasks.count) ids=\(remote.map { $0.id })")
+                let result = SyncEngine.reconcile(local: habits, remote: remote)
+                print("[Sync] reconcile toInsert=\(result.toInsert.count) toUpdate=\(result.toUpdate.count) toDelete=\(result.toDelete.count)")
+                applyReconcile(result)
                 saveAndRefreshWidgets()
                 backend.errorMessage  = nil
                 // Load the dashboard before handling overdue tasks so the
@@ -265,8 +317,10 @@ struct ContentView: View {
     /// Upload all local habits not yet confirmed by the server.
     /// Server-wins: once a backendId is assigned the pull will overwrite local values.
     private func flushOutbox() async throws {
-        // 1. Create habits that have never been uploaded
-        for habit in SyncEngine.pendingCreates(in: habits) {
+        // 1. Create habits that have never been uploaded.
+        //    `inFlightUploads` excludes habits whose addHabit Task is still
+        //    awaiting createHabit — re-uploading them here would dupe.
+        for habit in SyncEngine.pendingCreates(in: habits, excluding: inFlightUploads) {
             habit.syncStatus = .pending
             do {
                 let remote: BackendHabit
@@ -474,7 +528,6 @@ struct ContentView: View {
                 habit.pendingCheckIsDone = wasUnchecked
             }
         }
-        Haptics.impact(wasUnchecked ? .medium : .light)
         saveAndRefreshWidgets()
 
         if wasUnchecked {
@@ -670,6 +723,19 @@ struct ContentView: View {
 
     // MARK: - Onboarding
 
+    /// Decides whether to skip onboarding for an authenticated user.
+    /// Onboarding is signup-only — existing accounts that sign in (including on a
+    /// new device with no UserDefaults state) should never see it.
+    private func resolveOnboardingState() -> Bool {
+        let key = onboardingKey
+        if UserDefaults.standard.bool(forKey: key) { return true }
+        if !backend.justRegistered {
+            UserDefaults.standard.set(true, forKey: key)
+            return true
+        }
+        return false
+    }
+
     private func completeOnboarding(_ habitTitles: [String]) {
         // Dedupe across both the existing habit list and earlier entries in
         // this same batch — the SwiftData @Query doesn't re-fire inside the
@@ -699,6 +765,7 @@ struct ContentView: View {
             )
             modelContext.insert(habit)
         }
+        UserDefaults.standard.set(true, forKey: onboardingKey)
         withAnimation(.easeOut(duration: 0.3)) {
             hasCompletedOnboarding = true
         }
@@ -710,7 +777,6 @@ struct ContentView: View {
     // MARK: - Helpers
 
     private func triggerCelebration() {
-        Haptics.notify(.success)
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { showCelebration = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
             withAnimation(.easeOut(duration: 0.5)) { showCelebration = false }
@@ -753,29 +819,17 @@ struct ContentView: View {
             backend.errorMessage = error.localizedDescription
         }
         WidgetSnapshotWriter.shared.refresh()
-        refreshLiveActivity()
     }
+}
 
-    private func refreshLiveActivity() {
-        #if os(iOS)
-        let liveMetrics = HabitMetrics.compute(for: habits, todayKey: todayKey)
-        let isFrozen = backend.dashboard?.rewards.frozenDates.contains(todayKey) ?? false
-        // Keep the activity alive on a frozen day even when all habits look
-        // "done" locally — the snowflake indicator is the point of the card.
-        let shouldShow = liveMetrics.totalHabits > 0
-            && (liveMetrics.doneToday < liveMetrics.totalHabits || isFrozen)
-        if shouldShow {
-            StreakActivityController.start(
-                userName: backend.dashboard?.profile.displayName ?? "",
-                doneToday: liveMetrics.doneToday,
-                totalToday: liveMetrics.totalHabits,
-                currentStreak: liveMetrics.currentPerfectStreak,
-                todayKey: todayKey,
-                isFrozen: isFrozen
-            )
-        } else {
-            StreakActivityController.end()
-        }
-        #endif
-    }
+#Preview("Light") {
+    ContentView()
+        .modelContainer(for: Habit.self, inMemory: true)
+        .preferredColorScheme(.light)
+}
+
+#Preview("Dark") {
+    ContentView()
+        .modelContainer(for: Habit.self, inMemory: true)
+        .preferredColorScheme(.dark)
 }

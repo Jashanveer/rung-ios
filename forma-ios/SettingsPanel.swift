@@ -245,6 +245,7 @@ struct ProfileEditCard: View {
                     backend: backend,
                     initialUsername: profile.username ?? "",
                     initialAvatarURL: profile.avatarUrl,
+                    initialDisplayName: profile.displayName,
                     onComplete: {
                         showSheet = false
                         Task { await backend.refreshDashboard() }

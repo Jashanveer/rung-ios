@@ -82,7 +82,10 @@ struct PhoneTabScaffold: View {
             // Profile setup wins over normal onboarding — a fresh Apple
             // sign-up needs a username + avatar before anything else.
             if backend.requiresProfileSetup {
-                AppleProfileSetupView(backend: backend) {}
+                AppleProfileSetupView(
+                    backend: backend,
+                    prefilledDisplayName: backend.pendingAppleFullName
+                ) {}
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
                     .zIndex(195)
             } else if showOnboarding {
