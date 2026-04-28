@@ -21,6 +21,7 @@ struct MentorCharacterView: View {
     @State private var nudgeShown = false
     @State private var nudgeDismissTask: Task<Void, Never>? = nil
     @State private var isSending = false
+    @State private var inlineChatError: String? = nil
     // Keyboard height in screen coordinates. Used to lift the whole mentor
     // block (character + bubble) above the on-screen keyboard while the chat
     // is open. `.ignoresSafeArea(.keyboard)` keeps SwiftUI's automatic
@@ -156,10 +157,17 @@ struct MentorCharacterView: View {
 
                 MentorChatBubble(
                     mentorName: mentorName,
-                    isAI: backend.dashboard?.match?.aiMentor ?? false,
+                    // Default to true: the only mentor flow this app ships
+                    // today is the AI mentor (Bruce). Without the default,
+                    // the chat header reads "Your mentor" during the brief
+                    // window between opening the bubble and the dashboard
+                    // refresh landing the match — which is misleading since
+                    // there's no human-mentor variant to disambiguate from.
+                    isAI: backend.dashboard?.match?.aiMentor ?? true,
                     messages: messages,
-                    isMentorTyping: (backend.dashboard?.match?.aiMentor ?? false) && backend.aiMentorTyping,
+                    isMentorTyping: (backend.dashboard?.match?.aiMentor ?? true) && backend.aiMentorTyping,
                     messageText: $messageText,
+                    inlineError: inlineChatError,
                     currentUserId: backend.currentUserId,
                     onSend: sendMessage,
                     onClose: {
@@ -335,24 +343,46 @@ struct MentorCharacterView: View {
     private func sendMessage() {
         let text = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isSending else { return }
-        isSending = true
-        messageText = ""
 
+        if let matchID = backend.dashboard?.match?.id {
+            isSending = true
+            messageText = ""
+            inlineChatError = nil
+            Task {
+                defer { Task { @MainActor in isSending = false } }
+                await backend.sendMenteeMessage(matchId: matchID, message: text)
+                if case .failure(let message) = backend.messageRequestState {
+                    await MainActor.run { inlineChatError = message }
+                }
+            }
+            return
+        }
+
+        // Match not loaded yet — bypass the in-memory dashboard cache and
+        // force a fresh fetch so a newly-seeded AI mentor match is picked up.
+        // If the backend still has no match after the refresh, surface the
+        // error inline instead of silently restoring the typed text and
+        // leaving the user wondering why nothing happened.
+        isSending = true
+        inlineChatError = "Connecting to your mentor…"
         Task {
             defer { Task { @MainActor in isSending = false } }
-            // On a fresh account the AI mentor match is created lazily on the
-            // first dashboard pull. If the user opens the bubble and sends
-            // before the pull lands, `match.id` is nil — invalidate and pull
-            // once so the Claude round-trip still runs on the very first send.
-            if backend.dashboard?.match?.id == nil {
-                await backend.responseCache.invalidateDashboard()
-                await backend.refreshDashboard()
-            }
+            await backend.responseCache.invalidateDashboard()
+            await backend.refreshDashboard()
             guard let matchID = backend.dashboard?.match?.id else {
-                await MainActor.run { messageText = text }
+                await MainActor.run {
+                    inlineChatError = "No mentor match yet. Sign out and back in to trigger an AI mentor assignment."
+                }
                 return
             }
+            await MainActor.run {
+                messageText = ""
+                inlineChatError = nil
+            }
             await backend.sendMenteeMessage(matchId: matchID, message: text)
+            if case .failure(let message) = backend.messageRequestState {
+                await MainActor.run { inlineChatError = message }
+            }
         }
     }
 }

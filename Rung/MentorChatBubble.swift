@@ -10,6 +10,10 @@ struct MentorChatBubble: View {
     /// immediate feedback during the Gemini round-trip.
     var isMentorTyping: Bool = false
     @Binding var messageText: String
+    /// Surfaced just above the input row when the send flow can't proceed
+    /// (e.g. AI mentor match not yet created) or when the backend returned
+    /// a recoverable error. nil hides the row.
+    var inlineError: String? = nil
     var currentUserId: String? = nil
     let onSend: () -> Void
     let onClose: () -> Void
@@ -116,6 +120,17 @@ struct MentorChatBubble: View {
             }
 
             Divider()
+
+            if let inlineError, !inlineError.isEmpty {
+                Text(inlineError)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 6)
+                    .padding(.bottom, 2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.red.opacity(0.08))
+            }
 
             // Input row
             HStack(spacing: 8) {

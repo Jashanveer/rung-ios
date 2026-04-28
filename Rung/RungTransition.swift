@@ -66,6 +66,17 @@ struct RungTransition: View {
                 guard awaitDismiss, shouldDismiss else { return }
                 Task { await startFadeOutIfReady() }
             }
+            // Covers the race where `dismiss` arrived before `hasCovered`
+            // became true: the dismiss-onChange runs first, bails out
+            // because the cascade isn't fully covering yet, and the
+            // fallback inside runTimeline reads a stale captured `dismiss`
+            // value (View struct props don't update inside a running async
+            // closure). Reading `dismiss` from this body-level handler
+            // sees the live value.
+            .onChange(of: hasCovered) { _, covered in
+                guard awaitDismiss, covered, dismiss else { return }
+                Task { await startFadeOutIfReady() }
+            }
         }
         .ignoresSafeArea()
         .allowsHitTesting(overlayOpacity > 0.05)
