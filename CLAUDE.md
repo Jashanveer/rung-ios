@@ -5,14 +5,14 @@ with the iOS client repo.
 
 ## Repo layout
 
-- `forma-ios/` — app source (SwiftUI + SwiftData)
-- `forma-iosTests/` — unit tests (Swift Testing framework)
-- `forma-iosUITests/` — UI tests
-- `FormaShared/` — shared widget types (duplicated, not via SPM)
-- `FormaWidgets/` — widget extension
+- `Rung/` — app source (SwiftUI + SwiftData)
+- `RungTests/` — unit tests (Swift Testing framework)
+- `RungUITests/` — UI tests
+- `RungShared/` — shared widget types (duplicated, not via SPM)
+- `RungWidgets/` — widget extension
 
-The three-repo layout is: this repo for iOS, `~/Documents/Forma` for macOS,
-`~/Documents/habit-tracker` for the Spring Boot backend. The iOS and macOS
+The three-repo layout is: this repo for iOS, `~/Documents/Rung-MacOS` for macOS,
+`~/Documents/Rung-backend` for the Spring Boot backend. The iOS and macOS
 clients share source by **duplication**, not SPM — every edit to shared
 files (`Habit.swift`, `HabitBackend.swift`, `VerificationService.swift`,
 etc.) must land in both repos.
@@ -20,26 +20,26 @@ etc.) must land in both repos.
 ## Build & Test Commands
 
 ```sh
-xcodebuild -project forma-ios.xcodeproj -scheme forma-ios \
+xcodebuild -project Rung.xcodeproj -scheme Rung \
   -destination 'generic/platform=iOS Simulator' build
 
-xcodebuild -project forma-ios.xcodeproj -scheme forma-ios \
+xcodebuild -project Rung.xcodeproj -scheme Rung \
   -destination 'platform=iOS Simulator,name=iPhone 15' test
 ```
 
 ## Verification + weekly targets
 
-Same feature set as the macOS repo — see `~/Documents/Forma/CLAUDE.md` for
+Same feature set as the macOS repo — see `~/Documents/Rung-MacOS/CLAUDE.md` for
 the full description.
 
 **iOS-specific pieces**:
 
 - `com.apple.developer.family-controls` entitlement enabled on both the
-  main `forma-ios` target (`forma-ios.entitlements`) and the
+  main `Rung` target (`Rung.entitlements`) and the
   `ScreenTimeMonitor` extension target (`ScreenTimeMonitor.entitlements`)
-- App Group `group.jashanveer.habit-tracker-macos` shared between both
-  targets — the only memory bridge between the extension process and the
-  main app
+- App Group `group.jashanveer.Rung` shared between all three targets
+  (main app, widgets, ScreenTimeMonitor extension) — the only memory
+  bridge between the extension process and the main app
 - `ScreenTimeService.swift` (iOS-only via `#if os(iOS)`) — authorization,
   selection persistence, and `DeviceActivityCenter` schedule lifecycle.
   `wasOverLimit(on:)` reads the App Group flag the extension writes.
@@ -73,4 +73,4 @@ moment the paid Apple Developer team is selected.
 
 ## MCP Tools: code-review-graph
 
-See `~/Documents/Forma/CLAUDE.md` — same tooling guidance applies.
+See `~/Documents/Rung-MacOS/CLAUDE.md` — same tooling guidance applies.

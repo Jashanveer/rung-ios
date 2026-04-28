@@ -8,9 +8,9 @@
 //  channel is the shared App Group `UserDefaults` suite.
 //
 //  Contract with the main app (see `ScreenTimeService.swift`):
-//    - App Group ID:           "group.jashanveer.habit-tracker-macos"
-//    - Activity name:          "forma.social"
-//    - Event name:             "forma.social.overLimit"
+//    - App Group ID:           "group.jashanveer.Rung"
+//    - Activity name:          "rung.social"
+//    - Event name:             "rung.social.overLimit"
 //    - Per-day overLimit key:  "screenTime.YYYY-MM-DD.overLimit"
 //
 //  Keep the four strings above in sync with `ScreenTimeService` — they're
@@ -19,7 +19,7 @@
 import DeviceActivity
 import Foundation
 
-private let kAppGroupID = "group.jashanveer.habit-tracker-macos"
+private let kAppGroupID = "group.jashanveer.Rung"
 
 /// `DateFormatter` is moderately expensive to construct, and the extension
 /// can be invoked rapidly across interval/event callbacks. Build once.
