@@ -31,3 +31,4 @@ Carthage/Build/
 
 ## Claude Code / agent tooling runtime state
 .claude/
+graphify-out/
