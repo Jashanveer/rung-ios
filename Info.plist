@@ -18,6 +18,8 @@
 	<string>Rung uses Screen Time limits to verify your social-media-detox habits without tracking what you do in those apps.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>UIRequiresFullScreen</key>
+	<true/>
 	<!-- Permits HTTP loads to localhost / *.local / private LAN IPs so the
 	     `-BackendBaseURL http://localhost:8080` launch-arg toggle works.
 	     This is the Apple-approved key for local-network development —
