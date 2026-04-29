@@ -25,14 +25,14 @@
 			containerPortal = 9B1D79242F96937600717AF7 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 9B1D792B2F96937600717AF7;
-			remoteInfo = "Rung";
+			remoteInfo = Rung;
 		};
 		9B1D79462F96937A00717AF7 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 9B1D79242F96937600717AF7 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 9B1D792B2F96937600717AF7;
-			remoteInfo = "Rung";
+			remoteInfo = Rung;
 		};
 		9B49CDA52F9BD0CE001B86CD /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -60,9 +60,9 @@
 
 /* Begin PBXFileReference section */
 		861665FA01BE509D80EC41B7 /* RungWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RungWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		9B1D792C2F96937600717AF7 /* Rung.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Rung.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		9B1D793B2F96937A00717AF7 /* RungTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "RungTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
-		9B1D79452F96937A00717AF7 /* RungUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "RungUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		9B1D792C2F96937600717AF7 /* Rung.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Rung.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9B1D793B2F96937A00717AF7 /* RungTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RungTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		9B1D79452F96937A00717AF7 /* RungUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RungUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9B49CD9C2F9BD0CC001B86CD /* ScreenTimeMonitor.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ScreenTimeMonitor.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		9B49CD9E2F9BD0CD001B86CD /* DeviceActivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = DeviceActivity.framework; path = System/Library/Frameworks/DeviceActivity.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
@@ -87,17 +87,17 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		9B1D792E2F96937600717AF7 /* Rung */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "Rung";
+			path = Rung;
 			sourceTree = "<group>";
 		};
 		9B1D793E2F96937A00717AF7 /* RungTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "RungTests";
+			path = RungTests;
 			sourceTree = "<group>";
 		};
 		9B1D79482F96937A00717AF7 /* RungUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "RungUITests";
+			path = RungUITests;
 			sourceTree = "<group>";
 		};
 		9B49CDA02F9BD0CE001B86CD /* ScreenTimeMonitor */ = {
@@ -219,8 +219,8 @@
 				9B1D792E2F96937600717AF7 /* Rung */,
 				A72CF36A3AA57AD5296FAA32 /* RungShared */,
 			);
-			name = "Rung";
-			productName = "Rung";
+			name = Rung;
+			productName = Rung;
 			productReference = 9B1D792C2F96937600717AF7 /* Rung.app */;
 			productType = "com.apple.product-type.application";
 		};
@@ -240,8 +240,8 @@
 			fileSystemSynchronizedGroups = (
 				9B1D793E2F96937A00717AF7 /* RungTests */,
 			);
-			name = "RungTests";
-			productName = "RungTests";
+			name = RungTests;
+			productName = RungTests;
 			productReference = 9B1D793B2F96937A00717AF7 /* RungTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
@@ -261,8 +261,8 @@
 			fileSystemSynchronizedGroups = (
 				9B1D79482F96937A00717AF7 /* RungUITests */,
 			);
-			name = "RungUITests";
-			productName = "RungUITests";
+			name = RungUITests;
+			productName = RungUITests;
 			productReference = 9B1D79452F96937A00717AF7 /* RungUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
@@ -470,7 +470,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = RungWidgets/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Rung Widgets";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -499,7 +499,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = RungWidgets/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Rung Widgets";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -572,7 +572,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -630,7 +630,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -645,7 +645,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = "Rung.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = Rung.Debug.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Rung.Debug.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = YLN8JUVVX3;
@@ -659,6 +660,7 @@
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -683,12 +685,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = "Rung.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = Rung.Release.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Rung.Release.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = YLN8JUVVX3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Rung;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -696,6 +700,7 @@
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -723,7 +728,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = YLN8JUVVX3;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "jashanveer.Rung-iOSTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -745,7 +750,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = YLN8JUVVX3;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "jashanveer.Rung-iOSTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -775,7 +780,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = "Rung";
+				TEST_TARGET_NAME = Rung;
 			};
 			name = Debug;
 		};
@@ -795,7 +800,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = "Rung";
+				TEST_TARGET_NAME = Rung;
 			};
 			name = Release;
 		};
