@@ -51,6 +51,7 @@ struct SettingsPanel: View {
                 header
 
                 if mode == .combined {
+                    PermissionsStatusCard()
                     ProfileEditCard(backend: backend)
                     AccountActionsCard(backend: backend, showDeleteConfirm: $showDeleteConfirm)
                     VerificationHelpCard()
@@ -89,6 +90,8 @@ struct SettingsPanel: View {
                 }
 
                 if mode == .account {
+                    PermissionsStatusCard()
+
                     TimeRemindersCard(
                         habits: habits,
                         onReminderChange: onReminderChange
