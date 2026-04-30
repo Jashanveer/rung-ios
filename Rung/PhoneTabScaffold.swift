@@ -8,7 +8,7 @@ import UIKit
 /// edge-handle paradigm. All global overlays (onboarding, intro, confetti,
 /// speech bubble nudge) sit above the TabView.
 struct PhoneTabScaffold: View {
-    enum Tab: Hashable { case today, stats, friends, account, calendar }
+    enum Tab: Hashable { case today, stats, friends, account, calendar, energy }
 
     let colorScheme: ColorScheme
     let habits: [Habit]
@@ -51,6 +51,10 @@ struct PhoneTabScaffold: View {
             todayTab
                 .tabItem { Label("Today", systemImage: "checkmark.circle.fill") }
                 .tag(Tab.today)
+
+            energyTab
+                .tabItem { Label("Energy", systemImage: "bolt.heart.fill") }
+                .tag(Tab.energy)
 
             statsTab
                 .tabItem { Label("Stats", systemImage: "chart.bar.xaxis") }
@@ -309,6 +313,16 @@ struct PhoneTabScaffold: View {
             .padding(.horizontal, 16)
         }
         .refreshable { onSync() }
+    }
+
+    // MARK: - Energy
+
+    private var energyTab: some View {
+        ZStack {
+            MinimalBackground().ignoresSafeArea()
+
+            EnergyView(service: SleepInsightsService.shared)
+        }
     }
 
     // MARK: - Calendar

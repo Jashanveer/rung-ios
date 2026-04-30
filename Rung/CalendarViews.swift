@@ -25,6 +25,31 @@ enum CalendarDisplayMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// Top-level sheet mode for the regular (iPad / macOS) calendar surface.
+/// Lets the user flip between the perfect-days calendar and the
+/// HealthKit-driven energy curve without leaving the bottom-edge sheet.
+/// Phones don't see this toggle — Energy lives in its own tab there.
+enum CalendarSheetMode: String, CaseIterable, Identifiable {
+    case calendar
+    case energy
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .calendar: return "Calendar"
+        case .energy:   return "Energy"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .calendar: return "calendar"
+        case .energy:   return "bolt.heart.fill"
+        }
+    }
+}
+
 struct CalendarSheet: View {
     @Environment(\.colorScheme) private var colorScheme
     #if os(iOS)
@@ -36,6 +61,9 @@ struct CalendarSheet: View {
     let onClose: () -> Void
     @State private var displayMode: CalendarDisplayMode = .perfectDays
     @State private var zoomedMonth: Int?
+    /// Top-level toggle (iPad / macOS only). The phone path has its own
+    /// dedicated Energy tab so it never reads this flag.
+    @State private var sheetMode: CalendarSheetMode = .calendar
 
     private var isCompact: Bool {
         #if os(iOS)
@@ -137,10 +165,13 @@ struct CalendarSheet: View {
     private var regularBody: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text(displayMode.title)
+                Text(sheetMode == .calendar ? displayMode.title : "Energy")
                     .font(.headline)
                 Spacer()
-                CalendarModeToggle(mode: $displayMode, colorScheme: colorScheme)
+                CalendarSheetModeToggle(mode: $sheetMode, colorScheme: colorScheme)
+                if sheetMode == .calendar {
+                    CalendarModeToggle(mode: $displayMode, colorScheme: colorScheme)
+                }
                 Button {
                     onClose()
                 } label: {
@@ -153,16 +184,25 @@ struct CalendarSheet: View {
                 .buttonStyle(.plain)
             }
 
-            YearPerfectCalendar(
-                dailyCompletionCounts: dailyCompletionCounts,
-                perfectDayKeys: perfectDayKeys,
-                displayMode: displayMode,
-                totalHabits: totalHabits,
-                isCompact: false,
-                namespace: monthTransitionNamespace,
-                onTapMonth: nil
-            )
+            switch sheetMode {
+            case .calendar:
+                YearPerfectCalendar(
+                    dailyCompletionCounts: dailyCompletionCounts,
+                    perfectDayKeys: perfectDayKeys,
+                    displayMode: displayMode,
+                    totalHabits: totalHabits,
+                    isCompact: false,
+                    namespace: monthTransitionNamespace,
+                    onTapMonth: nil
+                )
+                .transition(.opacity.combined(with: .offset(y: 6)))
+            case .energy:
+                EnergyView(service: SleepInsightsService.shared)
+                    .frame(maxHeight: 520)
+                    .transition(.opacity.combined(with: .offset(y: 6)))
+            }
         }
+        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: sheetMode)
         .padding(18)
         .cleanShotSurface(
             shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
@@ -471,7 +511,9 @@ private struct PerfectDaysMonthDetailView: View {
                         completionCount: dailyCompletionCounts[day.key, default: 0],
                         totalHabits: totalHabits,
                         action: {
+                            #if os(iOS)
                             Haptics.selection()
+                            #endif
                             withAnimation(.easeInOut(duration: 0.18)) {
                                 focusedDayKey = day.key
                             }
@@ -1043,6 +1085,47 @@ private struct DayDetailCell: View {
         }
         .aspectRatio(1, contentMode: .fit)
         .help(helpText)
+    }
+}
+
+/// Top-level Calendar / Energy toggle — same visual language as
+/// `CalendarModeToggle` so the iPad / macOS sheet header reads as one
+/// coherent control bar rather than two unrelated pickers.
+struct CalendarSheetModeToggle: View {
+    @Binding var mode: CalendarSheetMode
+    let colorScheme: ColorScheme
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(CalendarSheetMode.allCases) { item in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        mode = item
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: item.systemImage)
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(item.title)
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(mode == item ? Color.white : .secondary)
+                    .padding(.horizontal, 9)
+                    .frame(height: 22)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(mode == item ? Color.indigo : Color.clear)
+                    )
+                }
+                .buttonStyle(.plain)
+                .help(item.title)
+            }
+        }
+        .padding(2)
+        .background(
+            Capsule(style: .continuous)
+                .fill(CleanShotTheme.controlFill(for: colorScheme))
+        )
     }
 }
 
