@@ -149,7 +149,10 @@ struct PhoneTabScaffold: View {
                     isFrozenToday: backend.dashboard?.rewards.frozenDates.contains(todayKey) ?? false,
                     onAddHabit: onAddHabit,
                     onToggleHabit: onToggleHabit,
-                    onDeleteHabit: onDeleteHabit
+                    onDeleteHabit: onDeleteHabit,
+                    onFreezeToday: { Task { await backend.useStreakFreeze(dateKey: todayKey) } },
+                    freezesAvailable: backend.dashboard?.rewards.freezesAvailable ?? 0,
+                    backendStore: backend
                 )
                 .padding(.horizontal, 4)
                 .zIndex(1)

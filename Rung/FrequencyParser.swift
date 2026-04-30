@@ -30,6 +30,19 @@ enum FrequencyParser {
         static let empty = ParseResult(cleanedTitle: "", weeklyTarget: nil, didMatch: false)
     }
 
+    /// True when `raw` contains a hint that the user is *trying* to encode
+    /// a cadence — but the regex pass missed. Triggers the LLM fallback in
+    /// the dashboard's add flow. Conservative on purpose so we don't burn
+    /// AI calls on plain titles like "Read".
+    static func hasFrequencyHint(_ raw: String) -> Bool {
+        let lowered = raw.lowercased()
+        let cadenceWords = ["week", "day", "every", "daily", "weekday", "weekend", "alternate", "times", "session", "morning", "evening", "night"]
+        if cadenceWords.contains(where: { lowered.contains($0) }) { return true }
+        // A bare digit ("4x", "3 sessions") usually signals frequency.
+        if lowered.range(of: #"\d"#, options: .regularExpression) != nil { return true }
+        return false
+    }
+
     /// Best-effort parse. Always returns a result — the caller treats
     /// `didMatch == false` as "leave the user's input alone".
     static func parse(_ raw: String) -> ParseResult {

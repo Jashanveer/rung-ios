@@ -26,6 +26,9 @@ struct CenterPanel: View {
     /// Number of streak freezes the user owns. Drives whether the freeze
     /// CTA appears in the calendar banner.
     var freezesAvailable: Int = 0
+    /// Backend store routed into AddHabitBar to enable the LLM
+    /// frequency-parse fallback. Optional so previews / tests can omit it.
+    var backendStore: HabitBackendStore? = nil
 
     @StateObject private var calendarService = CalendarService.shared
 
@@ -84,6 +87,7 @@ struct CenterPanel: View {
                 selectedType: $newEntryType,
                 hasOverdueTask: hasOverdueTask,
                 hasDuplicateEntry: hasDuplicateEntry,
+                backendStore: backendStore,
                 onAddHabit: onAddHabit
             )
                 .frame(maxWidth: 520)
