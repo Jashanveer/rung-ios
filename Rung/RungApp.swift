@@ -110,6 +110,13 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        // Treat foregrounding the app as "user has seen the notifications".
+        // Clear delivered notifications and zero the badge so the icon
+        // matches reality instead of accumulating forever.
+        clearDeliveredNotifications()
+    }
+
     func application(
         _ application: UIApplication,
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
@@ -171,6 +178,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        // Activating the app counts as "user has seen the notifications" —
+        // clear the dock badge and the delivered tray so the icon doesn't
+        // accumulate stale counts.
+        clearDeliveredNotifications()
+    }
+
     func application(_ application: NSApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         NotificationCenter.default.post(name: .apnsTokenReceived, object: deviceToken)
     }
@@ -201,6 +215,51 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         completionHandler([.banner, .sound])
+    }
+
+    /// User tapped a notification — treat as read: drop it from the tray
+    /// and zero the badge so the icon doesn't keep showing stale counts.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let identifier = response.notification.request.identifier
+        center.removeDeliveredNotifications(withIdentifiers: [identifier])
+        Task { @MainActor in
+            BadgeReset.clear()
+        }
+        completionHandler()
+    }
+
+    fileprivate func clearDeliveredNotifications() {
+        let center = UNUserNotificationCenter.current()
+        center.removeAllDeliveredNotifications()
+        Task { @MainActor in
+            BadgeReset.clear()
+        }
+    }
+}
+
+/// Cross-platform helper for zeroing the app icon badge. iOS 16+ uses
+/// `setBadgeCount` on the notification center; macOS clears the dock tile
+/// label directly. Falls back to the deprecated `applicationIconBadgeNumber`
+/// path on older iOS so older devices still get reset.
+enum BadgeReset {
+    @MainActor
+    static func clear() {
+        #if os(iOS)
+        if #available(iOS 16.0, *) {
+            UNUserNotificationCenter.current().setBadgeCount(0) { _ in }
+        } else {
+            UIApplication.shared.applicationIconBadgeNumber = 0
+        }
+        #elseif os(macOS)
+        if #available(macOS 13.0, *) {
+            UNUserNotificationCenter.current().setBadgeCount(0) { _ in }
+        }
+        NSApp?.dockTile.badgeLabel = nil
+        #endif
     }
 }
 

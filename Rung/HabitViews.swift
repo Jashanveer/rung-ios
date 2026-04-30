@@ -27,12 +27,13 @@ struct AddHabitBar: View {
     /// canonical-match + weekly-target selection collected by the
     /// confirmation card shown for habit-type adds. Tasks always pass nil
     /// for both.
-    let onAddHabit: (HabitEntryType, Date?, CanonicalHabit?, Int?) -> Void
+    let onAddHabit: (HabitEntryType, Date?, CanonicalHabit?, Int?, TaskPriority?) -> Void
 
     @State private var isHovered = false
     @State private var showValidationError = false
     @State private var dueAt: Date? = nil
     @State private var showDuePicker = false
+    @State private var taskPriority: TaskPriority? = nil
     @FocusState private var fieldFocused: Bool
 
     /// Populated once the user taps Add on a habit-type entry — surfaces an
@@ -91,6 +92,7 @@ struct AddHabitBar: View {
 
                 if selectedType == .task {
                     DueDateControl(dueAt: $dueAt, isPresented: $showDuePicker)
+                    PriorityControl(selection: $taskPriority)
                 }
 
                 HabitEntryTypeToggle(selection: $selectedType)
@@ -138,6 +140,18 @@ struct AddHabitBar: View {
                     .transition(.opacity.combined(with: .offset(y: -4)))
             }
 
+            // Sleep-derived best-time hint, shown only when the user is
+            // typing a habit (tasks have due dates instead) and our HK
+            // pull has produced a snapshot. Renders nothing otherwise so
+            // the layout doesn't jump for users without sleep data.
+            if selectedType == .habit && pendingHabit == nil && !newHabitTitle.isEmpty {
+                SleepSuggestionChip(
+                    service: SleepInsightsService.shared,
+                    habitTitle: newHabitTitle
+                )
+                .padding(.leading, 16)
+            }
+
             if let pending = pendingHabit {
                 habitConfirmCard(pending: pending)
                     .transition(.opacity.combined(with: .offset(y: -4)))
@@ -147,6 +161,7 @@ struct AddHabitBar: View {
         .animation(.easeOut(duration: 0.2), value: isBlockedByOverdue)
         .animation(.easeOut(duration: 0.2), value: isBlockedByDuplicate)
         .animation(.spring(response: 0.4, dampingFraction: 0.82), value: pendingHabit)
+        .task { await SleepInsightsService.shared.refresh() }
         #if os(iOS)
         .sheet(isPresented: $showSocialAppsPicker) {
             SocialAppsPickerSheet(isPresented: $showSocialAppsPicker)
@@ -286,7 +301,7 @@ struct AddHabitBar: View {
     private func commitPending() {
         guard let pending = pendingHabit else { return }
         let canonical = pending.acceptCanonical ? pending.match : nil
-        onAddHabit(.habit, nil, canonical, pending.weeklyTarget)
+        onAddHabit(.habit, nil, canonical, pending.weeklyTarget, nil)
         let needsSocialPicker = canonical?.key == "screenTime"
         pendingHabit = nil
         #if os(iOS)
@@ -322,22 +337,43 @@ struct AddHabitBar: View {
 
         // Tasks commit straight through — no verification or weekly target.
         if selectedType == .task {
-            onAddHabit(.task, dueAt, nil, nil)
+            onAddHabit(.task, dueAt, nil, nil, taskPriority)
             dueAt = nil
+            taskPriority = nil
             return
         }
 
         // Habits drop into the inline confirmation card so the user can
         // pick a weekly frequency and opt in/out of the canonical
-        // HealthKit verification (never auto-applied silently).
-        let match = CanonicalHabits.match(userTitle: trimmed)
+        // HealthKit verification (never auto-applied silently). If the
+        // user already encoded a frequency in the title ("gym 4 days a
+        // week"), the parser pre-fills the matching pill and drops the
+        // clause from the title — they can still override either choice.
+        let parsed = FrequencyParser.parse(trimmed)
+        let workingTitle = parsed.didMatch && !parsed.cleanedTitle.isEmpty
+            ? parsed.cleanedTitle
+            : trimmed
+        let presetTarget = parsed.didMatch ? snapWeeklyTarget(parsed.weeklyTarget) : nil
+        let match = CanonicalHabits.match(userTitle: workingTitle)
         pendingHabit = PendingHabitAdd(
-            title: trimmed,
+            title: workingTitle,
             match: match,
-            weeklyTarget: nil,
+            weeklyTarget: presetTarget,
             acceptCanonical: match != nil
         )
         fieldFocused = false
+    }
+
+    /// The confirmation card only offers nil / 3 / 5 today, so a parser hit
+    /// of "gym 4 days a week" would otherwise show no selected pill. Snap
+    /// to the closest offered value so the user sees a real preselection
+    /// (and can adjust freely from there). 7 → daily (nil) so the daily pill
+    /// lights up instead of forcing a synthetic 7-pill.
+    private func snapWeeklyTarget(_ raw: Int?) -> Int? {
+        guard let raw else { return nil }
+        if raw >= 7 { return nil }
+        if raw >= 5 { return 5 }
+        return 3
     }
 
     private func isLikelyMeaningful(_ text: String) -> Bool {
@@ -418,6 +454,77 @@ private struct HabitEntryTypeToggle: View {
             return CleanShotTheme.accent
         case .habit:
             return CleanShotTheme.success
+        }
+    }
+}
+
+/// Three-bucket task priority picker that lives in `AddHabitBar` next to
+/// the due-date control. Tapping cycles through `low → medium → high → none`
+/// so the entire interaction is one finger and zero modal sheets.
+private struct PriorityControl: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Binding var selection: TaskPriority?
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: cycle) {
+            trigger
+        }
+        .buttonStyle(.plain)
+        .pressHover($isHovered)
+        .help(selection == nil ? "Set priority" : "Priority: \(selection?.label ?? "")")
+        .accessibilityLabel("Task priority")
+        .accessibilityValue(selection?.label ?? "None")
+    }
+
+    private func cycle() {
+        Haptics.selection()
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+            switch selection {
+            case nil:        selection = .low
+            case .low:       selection = .medium
+            case .medium:    selection = .high
+            case .high:      selection = nil
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var trigger: some View {
+        if let p = selection {
+            HStack(spacing: 5) {
+                Image(systemName: p.systemImage)
+                    .font(.system(size: 10, weight: .bold))
+                Text(p.label)
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(tint(for: p))
+            .padding(.horizontal, 9)
+            .frame(height: 24)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(tint(for: p).opacity(colorScheme == .dark ? 0.18 : 0.12))
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(tint(for: p).opacity(0.28), lineWidth: 0.5)
+            )
+            .transition(.scale(scale: 0.85).combined(with: .opacity))
+        } else {
+            Image(systemName: "flag")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(isHovered ? .primary : .secondary)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+    }
+
+    private func tint(for p: TaskPriority) -> Color {
+        switch p {
+        case .low:    return .blue
+        case .medium: return .orange
+        case .high:   return .red
         }
     }
 }
@@ -954,6 +1061,23 @@ struct HabitListSection: View {
         habits.filter { $0.completedDayKeys.contains(todayKey) }.count
     }
 
+    /// Tasks float ahead of habits and are ordered high→medium→low→none by
+    /// priority; habits keep their original order. Within a priority bucket,
+    /// older items come first so the user's existing commitments stay above
+    /// later additions.
+    private var orderedHabits: [Habit] {
+        let tasks = habits
+            .filter { $0.entryType == .task }
+            .sorted { a, b in
+                let aw = a.priority?.sortWeight ?? 0
+                let bw = b.priority?.sortWeight ?? 0
+                if aw != bw { return aw > bw }
+                return a.createdAt < b.createdAt
+            }
+        let habitsOnly = habits.filter { $0.entryType == .habit }
+        return tasks + habitsOnly
+    }
+
     private func cluster(for habit: Habit) -> AccountabilityDashboard.HabitTimeCluster? {
         clusters.first { $0.habitTitle == habit.title }
     }
@@ -978,7 +1102,7 @@ struct HabitListSection: View {
             .padding(.horizontal, 4)
 
             LazyVStack(spacing: 6) {
-                ForEach(habits) { habit in
+                ForEach(orderedHabits) { habit in
                     HabitCard(
                         habit: habit,
                         todayKey: todayKey,
@@ -1206,6 +1330,9 @@ struct HabitCard: View {
                         .strikethrough(effectiveDone)
                         .foregroundStyle(effectiveDone ? .secondary : .primary)
                         .lineLimit(1)
+                    if !effectiveDone, habit.entryType == .task, let priority = habit.priority {
+                        PriorityBadge(priority: priority)
+                    }
                     if isAutoVerified && renderAsRemoteVerifyDevice {
                         HealthKitPill(source: habit.verificationSource)
                     }
@@ -1301,6 +1428,16 @@ struct HabitCard: View {
             }
         }
         .contextMenu {
+            // Focus mode is available for any uncompleted item — both
+            // tasks and habits benefit from a 25-minute lock-in. Sits at
+            // the top of the menu so it's the most discoverable action.
+            if !effectiveDone {
+                Button {
+                    FocusController.shared.start(taskTitle: habit.title)
+                } label: {
+                    Label("Start focus session", systemImage: "timer")
+                }
+            }
             if isHabitEntry {
                 // Manual override is iPhone-only — iPad's HealthKit access is
                 // background-disabled and Screen Time only sees iPad usage,
@@ -1364,6 +1501,44 @@ struct HabitCard: View {
 
 /// Compact indicator shown on a HabitCard when the local record diverges from the server.
 /// Hidden entirely when synced so it consumes no layout space.
+/// Subtle pill rendered next to a task's title showing its priority. Hidden
+/// once the task is marked done so completed work doesn't keep shouting
+/// for attention. Color-codes by urgency: blue (low), orange (medium),
+/// red (high).
+private struct PriorityBadge: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let priority: TaskPriority
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: priority.systemImage)
+                .font(.system(size: 8, weight: .bold))
+            Text(priority.label)
+                .font(.system(size: 9, weight: .semibold))
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(
+            Capsule(style: .continuous)
+                .fill(tint.opacity(colorScheme == .dark ? 0.18 : 0.12))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(tint.opacity(0.28), lineWidth: 0.5)
+        )
+        .accessibilityLabel("Priority: \(priority.label)")
+    }
+
+    private var tint: Color {
+        switch priority {
+        case .low:    return .blue
+        case .medium: return .orange
+        case .high:   return .red
+        }
+    }
+}
+
 /// Pill rendered next to the habit title for auto-verified habits on devices
 /// that don't actually run the verifier (iPad, macOS) — tells the user which
 /// engine owns this habit's completion. iPhone keeps the existing pink

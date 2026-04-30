@@ -16,6 +16,12 @@
 	<string>Rung sends habit reminders, streak warnings, and accountability nudges from your mentor.</string>
 	<key>NSFamilyControlsUsageDescription</key>
 	<string>Rung uses Screen Time limits to verify your social-media-detox habits without tracking what you do in those apps.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Rung reads today's events so it can suggest a streak freeze on busy days and surface tasks tied to your meetings.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Rung reads today's events so it can suggest a streak freeze on busy days and surface tasks tied to your meetings.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UIRequiresFullScreen</key>

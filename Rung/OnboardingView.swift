@@ -26,12 +26,12 @@ struct OnboardingView: View {
     @FocusState private var fieldFocused: Bool
 
     @State private var phase: OnboardingPhase = .inputHabits
-    @State private var hasRequestedHealthKit = false
-    @State private var healthKitRequesting = false
     @State private var hasRequestedNotifications = false
     @State private var notificationsRequesting = false
     @State private var showVerificationHelp = false
     #if os(iOS)
+    @State private var hasRequestedHealthKit = false
+    @State private var healthKitRequesting = false
     @State private var hasRequestedScreenTime = false
     @State private var screenTimeRequesting = false
     #endif
@@ -271,6 +271,7 @@ struct OnboardingView: View {
                 action: requestNotifications
             )
 
+            #if os(iOS)
             permissionRow(
                 systemImage: "heart.text.square.fill",
                 tint: .pink,
@@ -281,7 +282,6 @@ struct OnboardingView: View {
                 action: requestHealthKit
             )
 
-            #if os(iOS)
             permissionRow(
                 systemImage: "hourglass",
                 tint: .indigo,
@@ -407,6 +407,7 @@ struct OnboardingView: View {
         }
     }
 
+    #if os(iOS)
     private func requestHealthKit() {
         guard !hasRequestedHealthKit, !healthKitRequesting else { return }
         healthKitRequesting = true
@@ -418,6 +419,7 @@ struct OnboardingView: View {
             }
         }
     }
+    #endif
 
     private func requestNotifications() {
         guard !hasRequestedNotifications, !notificationsRequesting else { return }

@@ -4,6 +4,8 @@ import SwiftUI
 struct ContentViewScaffold: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
+    @StateObject private var focusController = FocusController.shared
+
     let colorScheme: ColorScheme
     let habits: [Habit]
     let todayKey: String
@@ -32,7 +34,7 @@ struct ContentViewScaffold: View {
     @Namespace private var panelMorph
     let stampStagingIds: Set<PersistentIdentifier>
 
-    let onAddHabit: (HabitEntryType, Date?, CanonicalHabit?, Int?) -> Void
+    let onAddHabit: (HabitEntryType, Date?, CanonicalHabit?, Int?, TaskPriority?) -> Void
     let onToggleHabit: (Habit) -> Void
     let onDeleteHabit: (Habit) -> Void
     let onSync: () -> Void
@@ -40,15 +42,24 @@ struct ContentViewScaffold: View {
     let onCompleteOnboarding: ([String]) -> Void
 
     var body: some View {
-        #if os(iOS)
-        if horizontalSizeClass == .compact {
-            phoneScaffold
-        } else {
+        ZStack {
+            #if os(iOS)
+            if horizontalSizeClass == .compact {
+                phoneScaffold
+            } else {
+                padOrMacScaffold
+            }
+            #else
             padOrMacScaffold
+            #endif
+
+            if focusController.isImmersivePresented {
+                FocusModeView(controller: focusController)
+                    .zIndex(500)
+                    .transition(.opacity.combined(with: .scale(scale: 1.04)))
+            }
         }
-        #else
-        padOrMacScaffold
-        #endif
+        .animation(.spring(response: 0.4, dampingFraction: 0.86), value: focusController.isImmersivePresented)
     }
 
     // MARK: - iPhone (compact) — TabView wireframe
