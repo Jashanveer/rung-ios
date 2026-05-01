@@ -831,6 +831,10 @@ final class HabitBackendStore: ObservableObject {
             )
             errorMessage = nil
             statusMessage = "Account deleted from server."
+            // Tell the dashboard to wipe SwiftData before signOut clears
+            // tokens — otherwise any in-flight 401 handling could race
+            // the local-data wipe.
+            NotificationCenter.default.post(name: .rungAccountDeleted, object: nil)
             signOut()
         } catch {
             errorMessage = "Couldn’t delete account on server: \(error.localizedDescription)"
@@ -1564,6 +1568,18 @@ final class HabitBackendStore: ObservableObject {
                 // (Live Activity content state is streak-only — it doesn't
                 // carry displayName, so no update is needed here.)
                 WidgetSnapshotWriter.shared.refresh()
+            }
+        case "session.revoked":
+            // Server hard-deleted the current user (or revoked the
+            // session for some other reason). Wipe local SwiftData
+            // first — ContentView listens on `.rungAccountDeleted`
+            // — then tear the session down so the auth flow appears
+            // immediately. After this, signing in with the same Apple
+            // ID provisions a fresh account; previous habits are gone.
+            HabitBackendStore.sseLog("[UserStream] session.revoked received id=\(id ?? "-") payload=\(payload)")
+            Task { @MainActor in
+                NotificationCenter.default.post(name: .rungAccountDeleted, object: nil)
+                signOut()
             }
         case "ping", "stream.ready":
             break
