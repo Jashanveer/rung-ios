@@ -3,12 +3,13 @@ import SwiftData
 import SwiftUI
 import UIKit
 
-/// iPhone-specific root layout. Mirrors the Rung iOS wireframes: a five-tab
-/// `TabView` (Today / Stats / Friends / Account / Calendar) replaces the macOS
-/// edge-handle paradigm. All global overlays (onboarding, intro, confetti,
-/// speech bubble nudge) sit above the TabView.
+/// iPhone-specific root layout. Five tabs (Today / Calendar / Stats /
+/// Friends / Account) replace the macOS edge-handle paradigm. The Energy
+/// view lives inside the Calendar tab via a top-of-sheet toggle —
+/// matching the macOS / iPad layout — so the bottom bar stays at five
+/// even after Path B shipped.
 struct PhoneTabScaffold: View {
-    enum Tab: Hashable { case today, stats, friends, account, calendar, energy }
+    enum Tab: Hashable { case today, stats, friends, account, calendar }
 
     let colorScheme: ColorScheme
     let habits: [Habit]
@@ -52,9 +53,9 @@ struct PhoneTabScaffold: View {
                 .tabItem { Label("Today", systemImage: "checkmark.circle.fill") }
                 .tag(Tab.today)
 
-            energyTab
-                .tabItem { Label("Energy", systemImage: "bolt.heart.fill") }
-                .tag(Tab.energy)
+            calendarTab
+                .tabItem { Label("Calendar", systemImage: "calendar") }
+                .tag(Tab.calendar)
 
             statsTab
                 .tabItem { Label("Stats", systemImage: "chart.bar.xaxis") }
@@ -63,10 +64,6 @@ struct PhoneTabScaffold: View {
             friendsTab
                 .tabItem { Label("Friends", systemImage: "person.2.fill") }
                 .tag(Tab.friends)
-
-            calendarTab
-                .tabItem { Label("Calendar", systemImage: "calendar") }
-                .tag(Tab.calendar)
 
             accountTab
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
@@ -154,8 +151,6 @@ struct PhoneTabScaffold: View {
                     onAddHabit: onAddHabit,
                     onToggleHabit: onToggleHabit,
                     onDeleteHabit: onDeleteHabit,
-                    onFreezeToday: { Task { await backend.useStreakFreeze(dateKey: todayKey) } },
-                    freezesAvailable: backend.dashboard?.rewards.freezesAvailable ?? 0,
                     backendStore: backend
                 )
                 .padding(.horizontal, 4)
@@ -313,16 +308,6 @@ struct PhoneTabScaffold: View {
             .padding(.horizontal, 16)
         }
         .refreshable { onSync() }
-    }
-
-    // MARK: - Energy
-
-    private var energyTab: some View {
-        ZStack {
-            MinimalBackground().ignoresSafeArea()
-
-            EnergyView(service: SleepInsightsService.shared)
-        }
     }
 
     // MARK: - Calendar

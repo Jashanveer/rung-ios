@@ -46,7 +46,15 @@ struct StatsSidebar: View {
                     }
                 }
 
-                ProfileIdentityCard(metrics: metrics, dashboard: dashboard)
+                // Profile identity (avatar + display name) is intentionally
+                // hidden on the iPhone Stats tab — the user lives in the
+                // app, they don't need their own card to greet them. The
+                // macOS / iPad sidebar still shows it because that surface
+                // doubles as a roster / dashboard alongside other people's
+                // profiles, where self-identification adds context.
+                if !isCompact {
+                    ProfileIdentityCard(metrics: metrics, dashboard: dashboard)
+                }
 
                 LevelHeroCard(metrics: metrics, dashboard: dashboard)
 

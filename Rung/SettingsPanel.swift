@@ -52,11 +52,25 @@ struct SettingsPanel: View {
 
                 if mode == .combined {
                     PermissionsStatusCard()
-                    ProfileEditCard(backend: backend)
+                    // Profile editing intentionally does not live here on
+                    // iPad / macOS. Both surfaces double as a roster of
+                    // friends + accountability data, so a duplicated
+                    // self-card would just take up space — the Stats
+                    // sidebar already shows the user's `ProfileIdentityCard`
+                    // and the iPhone Friends tab keeps the editable
+                    // `ProfileEditCard` at its top.
                     AccountActionsCard(backend: backend, showDeleteConfirm: $showDeleteConfirm)
+                    EnergyViewSettingsCard()
                     VerificationHelpCard()
                     EmailPreferencesCard(backend: backend)
                     AcknowledgmentsCard()
+                }
+
+                // Profile lives at the very top of the Friends tab — the
+                // user's own card sits above the leaderboard so they can
+                // see themselves alongside friends without bouncing tabs.
+                if mode == .friends {
+                    ProfileEditCard(backend: backend)
                 }
 
                 if mode == .friends, let dashboard = backend.dashboard {
@@ -97,7 +111,7 @@ struct SettingsPanel: View {
                         onReminderChange: onReminderChange
                     )
 
-                    ProfileEditCard(backend: backend)
+                    EnergyViewSettingsCard()
                     AccountActionsCard(backend: backend, showDeleteConfirm: $showDeleteConfirm)
                     VerificationHelpCard()
                     EmailPreferencesCard(backend: backend)
@@ -183,10 +197,10 @@ struct SettingsPanel: View {
 /// Re-uses `AppleProfileSetupView` in its edit-mode init to let the
 /// user rename their handle or pick a different character at any
 /// time. Pre-fills the current username + avatar from the dashboard
-/// so an avatar-only change doesn't force a username re-pick. Hidden
-/// when there's no dashboard yet (pre-auth or first-load) — falling
-/// back to a "loading…" state would just confuse users since the rest
-/// of Settings is also blank in that case.
+/// so an avatar-only change doesn't force a username re-pick. Always
+/// renders — when the dashboard hasn't loaded a profile yet we still
+/// show the card with a "Set up profile" CTA so the Friends tab never
+/// looks empty for users who haven't completed setup.
 struct ProfileEditCard: View {
     @ObservedObject var backend: HabitBackendStore
     @State private var showSheet = false
@@ -196,81 +210,95 @@ struct ProfileEditCard: View {
     }
 
     var body: some View {
-        if let profile {
-            VStack(alignment: .leading, spacing: 10) {
-                PanelTitle(systemImage: "person.crop.square", title: "Profile")
+        VStack(alignment: .leading, spacing: 10) {
+            PanelTitle(systemImage: "person.crop.square", title: "Profile")
 
-                HStack(spacing: 12) {
-                    AsyncImage(url: URL(string: profile.avatarUrl ?? "")) { image in
-                        image.resizable().scaledToFit()
-                    } placeholder: {
-                        Image(systemName: "person.crop.circle.fill")
-                            .font(.system(size: 30))
-                            .foregroundStyle(.tertiary)
-                    }
-                    .frame(width: 44, height: 44)
-                    .clipShape(Circle())
-                    .overlay(
-                        Circle().strokeBorder(CleanShotTheme.accent.opacity(0.35), lineWidth: 1)
-                    )
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(profile.displayName.isEmpty ? "—" : profile.displayName)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                        if let username = profile.username, !username.isEmpty {
-                            Text("@\(username.lowercased())")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
-
-                    Spacer()
+            HStack(spacing: 12) {
+                AsyncImage(url: URL(string: profile?.avatarUrl ?? "")) { image in
+                    image.resizable().scaledToFit()
+                } placeholder: {
+                    Image(systemName: "person.crop.circle.fill")
+                        .font(.system(size: 30))
+                        .foregroundStyle(.tertiary)
                 }
-
-                Button {
-                    showSheet = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 12, weight: .semibold))
-                        Text("Edit profile")
-                            .font(.system(size: 12, weight: .semibold))
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.tertiary)
-                    }
-                    .foregroundStyle(CleanShotTheme.accent)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                }
-                .buttonStyle(.plain)
-                .cleanShotSurface(
-                    shape: RoundedRectangle(cornerRadius: 10, style: .continuous),
-                    level: .control
+                .frame(width: 44, height: 44)
+                .clipShape(Circle())
+                .overlay(
+                    Circle().strokeBorder(CleanShotTheme.accent.opacity(0.35), lineWidth: 1)
                 )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(displayName)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    if let secondary = secondaryLine {
+                        Text(secondary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer()
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {
+                showSheet = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(actionLabel)
+                        .font(.system(size: 12, weight: .semibold))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .foregroundStyle(CleanShotTheme.accent)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+            }
+            .buttonStyle(.plain)
             .cleanShotSurface(
-                shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
+                shape: RoundedRectangle(cornerRadius: 10, style: .continuous),
                 level: .control
             )
-            .sheet(isPresented: $showSheet) {
-                AppleProfileSetupView(
-                    backend: backend,
-                    initialUsername: profile.username ?? "",
-                    initialAvatarURL: profile.avatarUrl,
-                    initialDisplayName: profile.displayName,
-                    onComplete: {
-                        showSheet = false
-                        Task { await backend.refreshDashboard() }
-                    }
-                )
-            }
         }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cleanShotSurface(
+            shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
+            level: .control
+        )
+        .sheet(isPresented: $showSheet) {
+            AppleProfileSetupView(
+                backend: backend,
+                initialUsername: profile?.username ?? "",
+                initialAvatarURL: profile?.avatarUrl,
+                initialDisplayName: profile?.displayName ?? "",
+                onComplete: {
+                    showSheet = false
+                    Task { await backend.refreshDashboard() }
+                }
+            )
+        }
+    }
+
+    private var displayName: String {
+        if let name = profile?.displayName, !name.isEmpty { return name }
+        return "Your profile"
+    }
+
+    private var secondaryLine: String? {
+        if let username = profile?.username, !username.isEmpty {
+            return "@\(username.lowercased())"
+        }
+        return profile == nil ? "Tap to set up your name and avatar" : nil
+    }
+
+    private var actionLabel: String {
+        profile == nil ? "Set up profile" : "Edit profile"
     }
 }
 
@@ -1153,6 +1181,42 @@ private struct TimeReminderOptionButton: View {
             isActive: isSelected || isHovered
         )
         .pressHover($isHovered)
+    }
+}
+
+// MARK: - Energy View Visibility
+
+/// Toggle that lets users without an Apple Watch (or anyone who doesn't
+/// track sleep) hide the Energy view entirely. Off → the Cal/Energy
+/// switcher disappears and the Calendar tab is calendar-only. The
+/// `Settings.showEnergyView` key is read by `CalendarSheet` via
+/// `@AppStorage` so this control doesn't need any wiring beyond writing
+/// the same key. Defaults to true so existing users see no change.
+struct EnergyViewSettingsCard: View {
+    @AppStorage("Settings.showEnergyView") private var showEnergyView = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            PanelTitle(systemImage: "bolt.heart.fill", title: "Energy view")
+
+            Toggle(isOn: $showEnergyView) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Show Energy alongside Calendar")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Adds a Cal / Energy switcher to the Calendar tab. Turn off if you don't track sleep — the Calendar fills the screen instead.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(MinimalToggleStyle())
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cleanShotSurface(
+            shape: RoundedRectangle(cornerRadius: 18, style: .continuous),
+            level: .control
+        )
     }
 }
 
